@@ -1,17 +1,18 @@
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::detection::{cache_safe_string, calculate_detection_hash, is_cached_safe_string};
 use crate::errors::ScanError;
-use crate::filters::{is_known_good_ip, IPV6_REGEX, IP_REGEX, MALICIOUS_PATTERN_REGEX, URL_REGEX};
-use crate::parser::parse_class_structure;
-use crate::scanner::scan::CollapseScanner;
-use crate::types::{ClassDetails, DetectionMode, FindingType, ResourceInfo, ScanResult};
-use crate::utils::{extract_domain, get_simple_name, truncate_string};
+// use crate::filters::URL_REGEX; // Unused
 
-impl CollapseScanner {
-    const MAX_SCAN_STRING_LEN: usize = 2048;
+use crate::parser::parse_class_structure;
+use crate::scanner::scan::CollapseFindOBFScanner;
+use crate::types::{ClassDetails, FindingType, ResourceInfo, ScanResult};
+use crate::utils::truncate_string;
+
+impl CollapseFindOBFScanner {
+
     pub(crate) fn scan_class_file_data(
         &self,
         original_path_str: &str,
@@ -53,16 +54,9 @@ impl CollapseScanner {
             );
         }
 
-        if let Some(cached_findings) = self.get_cached_findings(data_hash) {
-            return self.handle_cached_findings(
-                cached_findings.clone(),
-                original_path_str,
-                resource_info,
-            );
-        }
-
         let mut findings = Vec::new();
 
+        // Non-standard class file (custom JVM)
         if data.len() >= 2 && data[0] != 0xCA && data[1] != 0xFE {
             return self.handle_non_standard_class(
                 data,
@@ -75,11 +69,13 @@ impl CollapseScanner {
 
         let class_details = parse_class_structure(data, original_path_str, self.options.verbose)?;
 
-        self.analyze_class_details(&class_details, &mut findings);
+        // Detect obfuscation only in Obfuscation or All mode
+        // Detect obfuscation
+        self.check_name_obfuscation(&class_details, &mut findings);
 
+        // Scan strings for Discord webhooks (always) or obfuscation
         let strings_to_scan = self.prepare_strings_for_scanning(&class_details);
-
-        self.scan_strings_by_mode(&strings_to_scan, &mut findings);
+        self.scan_strings_for_webhooks_and_obfuscation(&strings_to_scan, &mut findings);
 
         let _cached_arc = self
             .result_cache
@@ -88,142 +84,7 @@ impl CollapseScanner {
         self.create_scan_result(findings, class_details, original_path_str, resource_info)
     }
 
-    fn check_network_patterns(&self, string: &str, findings: &mut Vec<(FindingType, String)>) {
-        if let Some(cap) = IP_REGEX.captures(string) {
-            let ip_str = cap.get(0).unwrap().as_str().to_string();
-            if is_known_good_ip(&ip_str) {
-                return;
-            }
-            findings.push((FindingType::IpAddress, ip_str));
-            return;
-        }
-
-        if let Some(cap) = IPV6_REGEX.captures(string) {
-            let ip_str = cap.get(0).unwrap().as_str().to_string();
-            if is_known_good_ip(&ip_str) {
-                return;
-            }
-            findings.push((FindingType::IpV6Address, ip_str));
-            return;
-        }
-
-        if let Some(cap) = URL_REGEX.captures(string) {
-            let url_match = cap.get(0).unwrap().as_str();
-            let domain = extract_domain(url_match);
-
-            if !domain.is_empty()
-                && !self.is_good_link(&domain)
-                && !self.is_suspicious_domain(&domain)
-            {
-                if is_known_good_ip(&domain) {
-                    return;
-                }
-                findings.push((FindingType::Url, url_match.to_string()));
-            }
-        }
-    }
-
-    fn check_suspicious_url_patterns(
-        &self,
-        string: &str,
-        findings: &mut Vec<(FindingType, String)>,
-    ) {
-        for cap in URL_REGEX.captures_iter(string) {
-            if let Some(url_match) = cap.get(0) {
-                let url_str = url_match.as_str();
-                let domain = extract_domain(url_str).to_lowercase();
-
-                if domain.is_empty() {
-                    continue;
-                }
-
-                let is_discord_domain = domain.ends_with("discord.com")
-                    || domain.ends_with("discordapp.com")
-                    || domain.contains(".discord.com")
-                    || domain.contains(".discordapp.com");
-
-                if is_discord_domain && url_str.to_lowercase().contains("/api/webhooks/") {
-                    findings.push((
-                        FindingType::DiscordWebhook,
-                        format!("Discord Webhook: {}", url_str),
-                    ));
-                } else if self.is_suspicious_domain(&domain) {
-                    findings.push((
-                        FindingType::SuspiciousUrl,
-                        format!("Suspicious URL: {}", url_str),
-                    ));
-                }
-            }
-        }
-    }
-
-    fn is_suspicious_domain(&self, domain: &str) -> bool {
-        let lower_domain = domain.to_lowercase();
-
-        if self.suspicious_domains.contains(&lower_domain) {
-            return true;
-        }
-
-        for suspicious in &self.suspicious_domains {
-            if lower_domain == *suspicious || lower_domain.ends_with(&format!(".{}", suspicious)) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn check_malicious_patterns(&self, string: &str, findings: &mut Vec<(FindingType, String)>) {
-        if let Some(cap) = MALICIOUS_PATTERN_REGEX.captures(string) {
-            let keyword = cap.get(0).unwrap().as_str();
-            let keyword_lower = keyword.to_lowercase();
-            if !self.ignored_suspicious_keywords.contains(&keyword_lower) {
-                findings.push((
-                    FindingType::SuspiciousKeyword,
-                    format!("'{}' in \"{}\"", keyword, truncate_string(string, 80)),
-                ));
-            }
-        }
-    }
-
-    fn check_all_patterns(&self, string: &str, findings: &mut Vec<(FindingType, String)>) -> bool {
-        let initial_len = findings.len();
-
-        if IP_REGEX.is_match(string) || IPV6_REGEX.is_match(string) || URL_REGEX.is_match(string) {
-            self.check_network_patterns(string, findings);
-            if URL_REGEX.is_match(string) {
-                self.check_suspicious_url_patterns(string, findings);
-            }
-        } else if MALICIOUS_PATTERN_REGEX.is_match(string) {
-            self.check_malicious_patterns(string, findings);
-        }
-
-        findings.len() == initial_len
-    }
-
-    fn check_network_patterns_combined(
-        &self,
-        string: &str,
-        findings: &mut Vec<(FindingType, String)>,
-    ) -> bool {
-        let initial_len = findings.len();
-        self.check_network_patterns(string, findings);
-        if findings.len() == initial_len {
-            self.check_suspicious_url_patterns(string, findings);
-        }
-        findings.len() == initial_len
-    }
-
-    fn check_malicious_patterns_only(
-        &self,
-        string: &str,
-        findings: &mut Vec<(FindingType, String)>,
-    ) -> bool {
-        let initial_len = findings.len();
-        self.check_malicious_patterns(string, findings);
-        findings.len() == initial_len
-    }
-
+    /// Проверка имён на обфускацию
     fn check_name_obfuscation(
         &self,
         details: &ClassDetails,
@@ -234,70 +95,83 @@ impl CollapseScanner {
                 return;
             }
 
-            if name.contains('/')
-                && context.ends_with(" Name")
-                && !context.starts_with("Class")
-                && !context.starts_with("Superclass")
-                && !context.starts_with("Interface")
-            {
-                let simple_name = get_simple_name(name);
-                if simple_name.contains('/') && simple_name == name && self.options.verbose {
-                    println!("      Suspicious name contains '/': {} - {}", context, name);
-                }
-            }
-
-            let non_ascii_count = name.chars().filter(|&c| !c.is_ascii()).count();
-            if non_ascii_count > 0 {
+            // Проверка на Unicode символы (не ASCII), исключая кириллицу
+            // Кирилица: U+0400..U+04FF
+            let suspicious_count = name.chars()
+                .filter(|&c| !c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
+                .count();
+            
+            let total_chars = name.chars().count();
+            
+            // Если больше 90% подозрительных символов и их больше 15 — это обфускация
+            if suspicious_count > 15 && suspicious_count * 100 / total_chars > 90 {
                 findings.push((
                     FindingType::ObfuscationUnicode,
                     format!(
-                        "{} '{}' ({} non-ASCII chars)",
+                        "{} '{}' ({} suspicious non-ASCII chars)",
                         context,
-                        truncate_string(name, 20),
-                        non_ascii_count
+                        truncate_string(name, 30),
+                        suspicious_count
                     ),
+                ));
+            }
+
+            // Проверка на случайные имена (a, b, c, aa, ab, abc и т.д.)
+            // ВАЖНО: Проверяем только для классов и суперклассов, чтобы избежать ложных срабатываний на полях/методах
+            if (context == "Class Name" || context == "Superclass Name") && self.is_random_name(name) {
+                findings.push((
+                    FindingType::ObfuscationRandomName,
+                    format!("{} '{}' (random naming pattern)", context, truncate_string(name, 30)),
                 ));
             }
         };
 
         check(&details.class_name, "Class Name");
-        if !details.superclass_name.is_empty() {
+        if !details.superclass_name.is_empty() 
+            && details.superclass_name != "java/lang/Object"
+        {
             check(&details.superclass_name, "Superclass Name");
         }
 
-        for i in details.interfaces.iter().take(5) {
-            check(i, "Interface Name");
+        for interface in details.interfaces.iter().take(5) {
+            check(interface, "Interface Name");
         }
 
-        let fields_sample_size = (details.fields.len() / 20).max(3).min(details.fields.len());
-        for f in details.fields.iter().take(fields_sample_size) {
+        // Проверяем выборку полей (не все, чтобы не замедлять)
+        let fields_to_check = details.fields.len().min(20);
+        for f in details.fields.iter().take(fields_to_check) {
             check(&f.name, "Field Name");
         }
 
-        let methods_sample_size = (details.methods.len() / 20)
-            .max(3)
-            .min(details.methods.len());
+        // Проверяем выборку методов (исключая конструкторы)
+        let methods_to_check = details.methods.len().min(30);
         for m in details
             .methods
             .iter()
             .filter(|m| m.name != "<init>" && m.name != "<clinit>")
-            .take(methods_sample_size)
+            .take(methods_to_check)
         {
             check(&m.name, "Method Name");
         }
     }
 
-    fn is_good_link(&self, domain: &str) -> bool {
-        let lower_domain = domain.to_lowercase();
-
-        if self.good_links.contains(&lower_domain) {
-            return true;
+    /// Проверка имени на случайный паттерн
+    fn is_random_name(&self, name: &str) -> bool {
+        // Убираем package path
+        let simple_name = name.rsplit('/').next().unwrap_or(name);
+        
+        if simple_name.is_empty() || simple_name.len() > 10 {
+            return false;
         }
 
-        let parts: Vec<&str> = lower_domain.split('.').collect();
-        for i in 1..parts.len() {
-            let parent_domain = parts[i..].join(".");
-            if self.good_links.contains(&parent_domain) {
+        // Паттерн: только буквы (a-z, A-Z), возможно с цифрами в конце
+        // Короткие имена типа a, b, c, aa, ab, abc, aaaa
+        if simple_name.len() <= 2 {
+            let all_letters = simple_name.chars().all(|c| c.is_ascii_alphabetic());
+            let has_lowercase = simple_name.chars().any(|c| c.is_ascii_lowercase());
+            
+            // Если всё lowercase и длина 1-2 — подозрительно
+            if has_lowercase && all_letters && simple_name.len() <= 2 {
                 return true;
             }
         }
@@ -305,20 +179,88 @@ impl CollapseScanner {
         false
     }
 
-    fn get_cached_findings(&self, hash: u64) -> Option<Arc<Vec<(FindingType, String)>>> {
-        self.result_cache.get(&hash)
+    /// Проверка строк на обфусцированные строки (Discord webhook check removed)
+    fn scan_strings_for_webhooks_and_obfuscation(
+        &self,
+        strings_to_scan: &[&String],
+        findings: &mut Vec<(FindingType, String)>,
+    ) {
+        let partials: Vec<Vec<(FindingType, String)>> = strings_to_scan
+            .par_iter()
+            .map(|s| {
+                let mut local = Vec::new();
+                let s_ref: &str = s.as_str();
+
+                // REMOVED: check_discord_webhook
+
+                // Проверка на обфусцированные строки
+                self.check_obfuscated_string(s_ref, &mut local);
+
+                if local.is_empty() {
+                    cache_safe_string(s_ref);
+                }
+
+                local
+            })
+            .collect();
+
+        for mut p in partials {
+            findings.append(&mut p);
+        }
     }
 
-    fn cache_findings_new(&self, hash: u64, findings: &[(FindingType, String)]) {
-        let vec = findings.to_vec();
-        let arc = Arc::new(vec);
-        let _ = self.result_cache.get_with(hash, || arc.clone());
+    // fn check_discord_webhook(&self, string: &str, findings: &mut Vec<(FindingType, String)>) { ... } // Removed
+
+    /// Проверка строки на обфускацию
+    fn check_obfuscated_string(&self, string: &str, findings: &mut Vec<(FindingType, String)>) {
+        // Пропускаем короткие строки
+        if string.len() < 15 {
+            return;
+        }
+
+        // Проверка на подозрительные символы (не ASCII, исключая кириллицу)
+        let suspicious_count = string.chars()
+            .filter(|&c| !c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
+            .count();
+        let total_chars = string.chars().count();
+
+        if total_chars > 0 && suspicious_count > 20 
+            && (suspicious_count * 100 / total_chars) > 70 
+        {
+            findings.push((
+                FindingType::ObfuscationString,
+                format!(
+                    "Obfuscated string: {} ({} suspicious non-ASCII chars)",
+                    truncate_string(string, 50),
+                    suspicious_count
+                ),
+            ));
+        }
+    }
+
+    fn prepare_strings_for_scanning<'a>(&self, class_details: &'a ClassDetails) -> Vec<&'a String> {
+        class_details
+            .strings
+            .iter()
+            .filter(|s| {
+                !s.is_empty() && 
+                s.len() >= 15 &&  // Увеличил минимальную длину с 3 до 15
+                !is_cached_safe_string(s) &&
+                // Добавил дополнительную проверку: пропускаем строки, которые выглядят как обычные имена или слова
+                !s.chars().all(|c| c.is_ascii_alphabetic() || c == '_' || c == '.') // Пропускаем простые имена классов/методов
+            })
+            .take(200)
+            .collect()
+    }
+
+    fn get_cached_findings(&self, hash: u64) -> Option<Arc<Vec<(FindingType, String)>>> {
+        self.result_cache.get(&hash)
     }
 
     fn calculate_danger_score(
         &self,
         findings: &[(FindingType, String)],
-        resource_info: Option<&ResourceInfo>,
+        _resource_info: Option<&ResourceInfo>,
     ) -> u8 {
         if findings.is_empty() {
             return 1;
@@ -329,6 +271,7 @@ impl CollapseScanner {
             *type_counts.entry(finding_type.clone()).or_insert(0) += 1;
         }
 
+        // Discord Webhook = максимальная опасность
         if *type_counts.get(&FindingType::DiscordWebhook).unwrap_or(&0) > 0 {
             return 10;
         }
@@ -341,27 +284,6 @@ impl CollapseScanner {
             score_acc += contrib;
         }
 
-        if let Some(ri) = resource_info {
-            if ri.is_dead_class_candidate {
-                score_acc += 3;
-            }
-        }
-
-        let suspicious_url_count = *type_counts.get(&FindingType::SuspiciousUrl).unwrap_or(&0);
-        let suspicious_keyword_count = *type_counts
-            .get(&FindingType::SuspiciousKeyword)
-            .unwrap_or(&0);
-        let ip_address_count = *type_counts.get(&FindingType::IpAddress).unwrap_or(&0)
-            + *type_counts.get(&FindingType::IpV6Address).unwrap_or(&0);
-
-        if suspicious_url_count > 0 && (suspicious_keyword_count > 0 || ip_address_count > 0) {
-            score_acc += 5;
-        }
-
-        if type_counts.len() >= 3 {
-            score_acc += 2;
-        }
-
         (score_acc as i32).clamp(1, 10) as u8
     }
 
@@ -369,17 +291,15 @@ impl CollapseScanner {
         &self,
         score: u8,
         findings: &[(FindingType, String)],
-        resource_info: Option<&ResourceInfo>,
+        _resource_info: Option<&ResourceInfo>,
     ) -> Vec<String> {
         if findings.is_empty() {
             return vec!["No suspicious elements detected.".to_string()];
         }
 
         let mut explanations = Vec::new();
-
         let use_emoji = self.options.progress.is_none();
         let warn_prefix = if use_emoji { "⚠️ " } else { "" };
-        let ok_prefix = if use_emoji { "✅ " } else { "" };
 
         if score >= 8 {
             explanations.push(format!(
@@ -399,7 +319,7 @@ impl CollapseScanner {
         } else {
             explanations.push(format!(
                 "{}MINIMAL RISK: Few or no concerning elements detected.",
-                ok_prefix
+                "✅ "
             ));
         }
 
@@ -414,70 +334,37 @@ impl CollapseScanner {
         if let Some(webhooks) = by_type.get(&FindingType::DiscordWebhook) {
             if !webhooks.is_empty() {
                 explanations.push(format!(
-                    "CRITICAL: Found {} Discord webhook(s)! These are extremely dangerous and commonly used for data exfiltration, logging stolen information.",
+                    "CRITICAL: Found {} Discord webhook(s)! These are extremely dangerous and commonly used for data exfiltration.",
                     webhooks.len()
                 ));
             }
         }
 
-        if let Some(urls) = by_type.get(&FindingType::SuspiciousUrl) {
-            if !urls.is_empty() {
+        if let Some(unicode) = by_type.get(&FindingType::ObfuscationUnicode) {
+            if !unicode.is_empty() {
                 explanations.push(format!(
-                    "Found {} suspicious URL(s) that may be used for data exfiltration.",
-                    urls.len()
+                    "Found {} obfuscated name(s) with Unicode characters.",
+                    unicode.len()
                 ));
             }
         }
 
-        if let Some(ips) = by_type.get(&FindingType::IpAddress) {
-            if !ips.is_empty() {
-                let sample = ips[0].clone();
+        if let Some(random) = by_type.get(&FindingType::ObfuscationRandomName) {
+            if !random.is_empty() {
                 explanations.push(format!(
-                    "Contains {} hardcoded IP address(es) such as {} that may indicate communication with malicious servers.",
-                    ips.len(), sample
+                    "Found {} obfuscated name(s) with random naming pattern (a, b, c, ...).",
+                    random.len()
                 ));
             }
         }
 
-        if let Some(urls) = by_type.get(&FindingType::Url) {
-            if !urls.is_empty() {
-                let domains: Vec<String> = urls
-                    .iter()
-                    .map(|url| extract_domain(url))
-                    .filter(|domain| !domain.is_empty() && !self.is_good_link(domain))
-                    .collect();
-
-                if !domains.is_empty() {
-                    let unique_domains: HashSet<String> = domains.into_iter().collect();
-                    let domain_list = unique_domains
-                        .into_iter()
-                        .take(3)
-                        .collect::<Vec<_>>()
-                        .join(", ");
-
-                    explanations.push(format!(
-                        "Contains connections to {} potentially suspicious domain(s) including: {}{}",
-                        urls.len(),
-                        domain_list,
-                        if urls.len() > 3 { " and others..." } else { "" }
-                    ));
-                }
-            }
-        }
-
-        if let Some(keywords) = by_type.get(&FindingType::SuspiciousKeyword) {
-            if !keywords.is_empty() {
+        if let Some(obf_strings) = by_type.get(&FindingType::ObfuscationString) {
+            if !obf_strings.is_empty() {
                 explanations.push(format!(
-                    "Contains {} suspicious code pattern(s) that may indicate malicious behavior.",
-                    keywords.len()
+                    "Found {} obfuscated string(s) with non-ASCII characters.",
+                    obf_strings.len()
                 ));
             }
-        }
-
-        if resource_info.is_some_and(|ri| ri.is_dead_class_candidate) {
-            explanations.push(
-                "Contains custom JVM bytecode (0xDEAD) which may indicate use of a custom classloader to evade detection.".to_string()
-            );
         }
 
         explanations
@@ -545,240 +432,10 @@ impl CollapseScanner {
         }
     }
 
-    fn analyze_class_details(
-        &self,
-        class_details: &ClassDetails,
-        findings: &mut Vec<(FindingType, String)>,
-    ) {
-        if self.options.mode == DetectionMode::Obfuscation
-            || self.options.mode == DetectionMode::All
-        {
-            self.check_name_obfuscation(class_details, findings);
-        }
-
-        let string_set: HashSet<&String> = class_details.strings.iter().collect();
-
-        if string_set.contains(&"Runtime".to_string()) {
-            findings.push((
-                FindingType::SuspiciousKeyword,
-                "Runtime execution (Runtime)".to_string(),
-            ));
-        }
-
-        if string_set.contains(&"loadLibrary".to_string()) {
-            findings.push((
-                FindingType::SuspiciousKeyword,
-                "Native library loading (loadLibrary)".to_string(),
-            ));
-        }
-
-        if string_set.contains(&"ProcessBuilder".to_string())
-            || string_set.contains(&"java/lang/ProcessBuilder".to_string())
-        {
-            findings.push((
-                FindingType::SuspiciousKeyword,
-                "ProcessBuilder usage".to_string(),
-            ));
-        }
-
-        if string_set.contains(&"getMethod".to_string())
-            && string_set.contains(&"invoke".to_string())
-        {
-            findings.push((
-                FindingType::SuspiciousKeyword,
-                "Reflection method invocation (getMethod + invoke)".to_string(),
-            ));
-        }
-
-        if (string_set.contains(&"socket".to_string())
-            || string_set.contains(&"bind".to_string())
-            || string_set.contains(&"connect".to_string()))
-            && self.options.mode != DetectionMode::Obfuscation
-        {
-            findings.push((
-                FindingType::SuspiciousKeyword,
-                "Low-level network API tokens (socket/bind/connect)".to_string(),
-            ));
-        }
-
-        drop(string_set);
-    }
-
-    fn prepare_strings_for_scanning<'a>(&self, class_details: &'a ClassDetails) -> Vec<&'a String> {
-        let strings_to_scan = class_details
-            .strings
-            .iter()
-            .filter(|s| !s.is_empty() && s.len() >= 3 && !is_cached_safe_string(s))
-            .take(100)
-            .collect::<Vec<_>>();
-
-        strings_to_scan
-    }
-
-    fn scan_strings_by_mode(
-        &self,
-        strings_to_scan: &[&String],
-        findings: &mut Vec<(FindingType, String)>,
-    ) {
-        match self.options.mode {
-            DetectionMode::All => {
-                let partials: Vec<Vec<(FindingType, String)>> = strings_to_scan
-                    .par_iter()
-                    .map(|s| {
-                        let mut local = Vec::new();
-                        let s_ref: &str = s.as_str();
-                        let s_to_check: &str;
-                        let mut truncated_due_to_boundary = false;
-                        if s_ref.len() > Self::MAX_SCAN_STRING_LEN {
-                            if let Some(part) = s_ref.get(..Self::MAX_SCAN_STRING_LEN) {
-                                s_to_check = part;
-                            } else {
-                                let mut i = Self::MAX_SCAN_STRING_LEN;
-                                while i > 0 && !s_ref.is_char_boundary(i) {
-                                    i -= 1;
-                                }
-                                if i == 0 {
-                                    s_to_check = "";
-                                } else {
-                                    s_to_check = &s_ref[..i];
-                                    truncated_due_to_boundary = true;
-                                }
-                            }
-                        } else {
-                            s_to_check = s_ref;
-                        }
-                        if truncated_due_to_boundary {
-                            if self.options.verbose {
-                                println!(
-                                    "      Warning: possible obfuscated/non-UTF8 string truncated: {}",
-                                    truncate_string(s_ref, 60)
-                                );
-                            }
-                            local.push((
-                                FindingType::ObfuscationUnicode,
-                                format!(
-                                    "Obfuscated string truncated: {}",
-                                    truncate_string(s_ref, 60)
-                                ),
-                            ));
-                        }
-
-                        if self.check_all_patterns(s_to_check, &mut local) {
-                            cache_safe_string(s_ref);
-                        }
-                        local
-                    })
-                    .collect();
-                for mut p in partials {
-                    findings.append(&mut p);
-                }
-            }
-            DetectionMode::Network => {
-                let partials: Vec<Vec<(FindingType, String)>> = strings_to_scan
-                    .par_iter()
-                    .map(|s| {
-                        let mut local = Vec::new();
-                        let s_ref: &str = s.as_str();
-                        let s_to_check: &str;
-                        let mut truncated_due_to_boundary = false;
-                        if s_ref.len() > Self::MAX_SCAN_STRING_LEN {
-                            if let Some(part) = s_ref.get(..Self::MAX_SCAN_STRING_LEN) {
-                                s_to_check = part;
-                            } else {
-                                let mut i = Self::MAX_SCAN_STRING_LEN;
-                                while i > 0 && !s_ref.is_char_boundary(i) {
-                                    i -= 1;
-                                }
-                                if i == 0 {
-                                    s_to_check = "";
-                                } else {
-                                    s_to_check = &s_ref[..i];
-                                    truncated_due_to_boundary = true;
-                                }
-                            }
-                        } else {
-                            s_to_check = s_ref;
-                        }
-                        if truncated_due_to_boundary {
-                            if self.options.verbose {
-                                println!(
-                                    "      Warning: possible obfuscated/non-UTF8 string truncated: {}",
-                                    truncate_string(s_ref, 60)
-                                );
-                            }
-                            local.push((
-                                FindingType::ObfuscationUnicode,
-                                format!(
-                                    "Obfuscated string truncated: {}",
-                                    truncate_string(s_ref, 60)
-                                ),
-                            ));
-                        }
-
-                        if self.check_network_patterns_combined(s_to_check, &mut local) {
-                            cache_safe_string(s_ref);
-                        }
-                        local
-                    })
-                    .collect();
-                for mut p in partials {
-                    findings.append(&mut p);
-                }
-            }
-            DetectionMode::Malicious => {
-                let partials: Vec<Vec<(FindingType, String)>> = strings_to_scan
-                    .par_iter()
-                    .map(|s| {
-                        let mut local = Vec::new();
-                        let s_ref: &str = s.as_str();
-                        let s_to_check: &str;
-                        let mut truncated_due_to_boundary = false;
-                        if s_ref.len() > Self::MAX_SCAN_STRING_LEN {
-                            if let Some(part) = s_ref.get(..Self::MAX_SCAN_STRING_LEN) {
-                                s_to_check = part;
-                            } else {
-                                let mut i = Self::MAX_SCAN_STRING_LEN;
-                                while i > 0 && !s_ref.is_char_boundary(i) {
-                                    i -= 1;
-                                }
-                                if i == 0 {
-                                    s_to_check = "";
-                                } else {
-                                    s_to_check = &s_ref[..i];
-                                    truncated_due_to_boundary = true;
-                                }
-                            }
-                        } else {
-                            s_to_check = s_ref;
-                        }
-                        if truncated_due_to_boundary {
-                            if self.options.verbose {
-                                println!(
-                                    "      Warning: possible obfuscated/non-UTF8 string truncated: {}",
-                                    truncate_string(s_ref, 60)
-                                );
-                            }
-                            local.push((
-                                FindingType::ObfuscationUnicode,
-                                format!(
-                                    "Obfuscated string truncated: {}",
-                                    truncate_string(s_ref, 60)
-                                ),
-                            ));
-                        }
-
-                        if self.check_malicious_patterns_only(s_to_check, &mut local) {
-                            cache_safe_string(s_ref);
-                        }
-                        local
-                    })
-                    .collect();
-                for mut p in partials {
-                    findings.append(&mut p);
-                }
-            }
-            _ => {}
-        }
+    fn cache_findings_new(&self, hash: u64, findings: &[(FindingType, String)]) {
+        let vec = findings.to_vec();
+        let arc = Arc::new(vec);
+        let _ = self.result_cache.get_with(hash, || arc.clone());
     }
 
     fn create_scan_result(

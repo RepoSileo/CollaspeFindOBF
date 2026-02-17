@@ -3,13 +3,14 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
+#[cfg(feature = "cli")]
 use colored::Colorize;
 
 use crate::errors::ScanError;
-use crate::scanner::scan::CollapseScanner;
+use crate::scanner::scan::CollapseFindOBFScanner;
 use crate::types::ScanResult;
 
-impl CollapseScanner {
+impl CollapseFindOBFScanner {
     pub(crate) fn should_scan(&self, internal_path: &str) -> bool {
         if self
             .exclude_patterns
@@ -19,7 +20,7 @@ impl CollapseScanner {
             if self.options.verbose {
                 println!(
                     "{} Skipping excluded file: {}",
-                    "🚫".dimmed(),
+                    dimmed_text!("🚫"),
                     internal_path
                 );
             }
@@ -64,7 +65,7 @@ impl CollapseScanner {
                 if self.options.verbose {
                     println!(
                         "{} Skipping filtered file: {}",
-                        "🚫".dimmed(),
+                        dimmed_text!("🚫"),
                         path.display()
                     );
                 }
@@ -74,7 +75,7 @@ impl CollapseScanner {
             if self.options.verbose {
                 println!(
                     "{} Scanning loose class file: {}",
-                    "📄".blue(),
+                    blue_text!("📄"),
                     path.display()
                 );
             }

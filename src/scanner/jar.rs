@@ -5,16 +5,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+#[cfg(feature = "cli")]
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use zip::ZipArchive;
 
 use crate::config::SYSTEM_CONFIG;
 use crate::errors::ScanError;
-use crate::scanner::scan::CollapseScanner;
+use crate::scanner::scan::CollapseFindOBFScanner;
 use crate::types::{ResourceInfo, ScanResult};
 
-impl CollapseScanner {
+impl CollapseFindOBFScanner {
     pub(crate) fn scan_jar_file(&self, jar_path: &Path) -> Result<Vec<ScanResult>, ScanError> {
         let start_time = Instant::now();
         let file = File::open(jar_path)?;
@@ -24,7 +25,7 @@ impl CollapseScanner {
         let mut results = Vec::new();
 
         if self.options.verbose {
-            println!("{} Scanning JAR file: {}", "🔎".blue(), jar_path.display());
+            println!("{} Scanning JAR file: {}", blue_text!("🔎"), jar_path.display());
         }
 
         let buffer_size = SYSTEM_CONFIG.buffer_size.min(4 * 1024 * 1024);
@@ -34,7 +35,7 @@ impl CollapseScanner {
         let mut total_memory_used = 0u64;
         let max_total_memory = 100 * 1024 * 1024;
 
-        let pb_template = format!("{} [{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>7}}/{{len:7}} ({{percent}}%) Processing: {{msg}}", "🔍".green());
+        let pb_template = format!("{} [{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>7}}/{{len:7}} ({{percent}}%) Processing: {{msg}}", green_text!("🔍"));
         let progress_bar = Arc::new(Mutex::new(ProgressBar::new(total_files as u64)));
         progress_bar.lock().unwrap().set_style(
             ProgressStyle::default_bar()
@@ -60,7 +61,7 @@ impl CollapseScanner {
                     Err(e) => {
                         eprintln!(
                             "{} Error accessing entry {} in {}: {}",
-                            "⚠️ ".yellow(),
+                            yellow_text!("⚠️ "),
                             i,
                             jar_path.display(),
                             e
@@ -93,7 +94,7 @@ impl CollapseScanner {
                 if let Err(e) = zip_file.read_to_end(&mut buffer) {
                     eprintln!(
                         "{} Error reading content of {}: {}",
-                        "⚠️ ".yellow(),
+                        yellow_text!("⚠️ "),
                         original_entry_name,
                         e
                     );
@@ -124,7 +125,7 @@ impl CollapseScanner {
                         Err(e) => {
                             eprintln!(
                                 "{} Error processing JAR entry {}: {}",
-                                "⚠️ ".yellow(),
+                                yellow_text!("⚠️ "),
                                 name_clone,
                                 e
                             );
@@ -162,7 +163,7 @@ impl CollapseScanner {
                 }
                 Ok((None, _)) => {}
                 Err(e) => {
-                    eprintln!("{} Error processing JAR entry: {}", "⚠️ ".yellow(), e);
+                    eprintln!("{} Error processing JAR entry: {}", yellow_text!("⚠️ "), e);
                 }
             }
         }
@@ -187,7 +188,7 @@ impl CollapseScanner {
         if self.options.verbose {
             println!(
                 "{} JAR scan completed in {:.2}s",
-                "✅".green(),
+                green_text!("✅"),
                 start_time.elapsed().as_secs_f64()
             );
         }
