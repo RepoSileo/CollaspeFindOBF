@@ -721,8 +721,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "collapsescanner"
-version = "1.0.0"
+name = "collapsefindobf"
+version = "1.0.1"
 dependencies = [
  "bloomfilter",
  "byteorder",

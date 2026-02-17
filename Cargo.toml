@@ -1,12 +1,12 @@
 [package]
-name = "collapsescanner"
-version = "1.0.0"
+name = "collapsefindobf"
+version = "1.0.1"
 edition = "2021"
 authors = ["dest4590"]
-default-run = "collapsescanner"
+default-run = "collapsefindobf"
 
 [[bin]]
-name = "collapsescanner"
+name = "collapsefindobf"
 path = "src/main.rs"
 required-features = []
 
