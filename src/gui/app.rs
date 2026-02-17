@@ -10,7 +10,7 @@ use iced::{Alignment, Color, Element, Length, Subscription, Task, Theme};
 use std::time::Duration;
 
 use crate::gui::icons::*;
-use crate::scanner::scan::CollapseScanner;
+use crate::scanner::scan::CollapseFindOBFScanner;
 use crate::types::{
     DetectionMode, FindingType, Progress as TypesProgress, ScanResult, ScannerOptions,
 };
@@ -19,13 +19,14 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use super::message::Message;
-use super::state::{AppState, ResultsUi, ScanProgress, ScanSettings};
+use super::state::{AppearanceSettings, AppState, ResultsUi, ScanProgress, ScanSettings, ThemeMode};
+use super::lang::{TRANSLATOR, Language};
 use super::theme;
 
 const SEVERITY_OPTIONS: [&str; 5] = ["All", "Low", "Medium", "High", "Critical"];
 const SORT_OPTIONS: [&str; 3] = ["Danger", "Path", "Findings"];
 
-pub struct CollapseApp {
+pub struct CollapseFindOBFApp {
     state: AppState,
     settings: ScanSettings,
     progress: ScanProgress,
@@ -33,9 +34,10 @@ pub struct CollapseApp {
     active_tab: usize,
     expanded_findings: Vec<usize>,
     results_ui: ResultsUi,
+    appearance: AppearanceSettings,
 }
 
-impl CollapseApp {
+impl CollapseFindOBFApp {
     pub fn new() -> (Self, Task<Message>) {
         (
             Self {
@@ -46,6 +48,7 @@ impl CollapseApp {
                 active_tab: 0,
                 expanded_findings: Vec::new(),
                 results_ui: ResultsUi::default(),
+                appearance: AppearanceSettings::default(),
             },
             Task::none(),
         )
@@ -232,6 +235,18 @@ impl CollapseApp {
                 }
                 Task::none()
             }
+            Message::LanguageChanged(lang) => {
+                self.appearance.language = lang;
+                Task::none()
+            }
+            Message::ThemeChanged(mode) => {
+                self.appearance.theme = mode;
+                Task::none()
+            }
+            Message::AccentColorChanged(color) => {
+                self.appearance.accent_color = color;
+                Task::none()
+            }
         }
     }
 
@@ -251,49 +266,91 @@ impl CollapseApp {
             _ => self.view_scan_tab(),
         };
 
-        let tabs = row![
-            tab_button("Scan", SCAN_ICON_SVG, 0, self.active_tab),
-            tab_button("Results", RESULTS_ICON_SVG, 1, self.active_tab),
-            tab_button("Settings", SETTINGS_ICON_SVG, 2, self.active_tab),
-        ]
-        .spacing(20);
-
-        let main_content = column![tabs, content]
+        // Sidebar
+        let sidebar = container(
+            column![
+                text("Collapse").size(24).style(|theme: &Theme| text::Style {
+                    color: Some(theme.palette().text),
+                }),
+                text("FindOBF").size(24).style(|theme: &Theme| text::Style {
+                    color: Some(theme.palette().primary),
+                }),
+                vertical_space().height(30),
+                tab_button(
+                    TRANSLATOR.get(self.appearance.language, "sidebar_scanner"),
+                    SCAN_ICON_SVG,
+                    0,
+                    self.active_tab,
+                ),
+                tab_button(
+                    TRANSLATOR.get(self.appearance.language, "sidebar_results"),
+                    RESULTS_ICON_SVG,
+                    1,
+                    self.active_tab,
+                ),
+                tab_button(
+                    TRANSLATOR.get(self.appearance.language, "sidebar_settings"),
+                    SETTINGS_ICON_SVG,
+                    2,
+                    self.active_tab,
+                ),
+                vertical_space().height(Length::Fill),
+                text(format!("v{} Global", env!("CARGO_PKG_VERSION")))
+                    .size(12)
+                    .style(|_theme: &Theme| text::Style {
+                         color: Some(Color::from_rgb(0.4, 0.4, 0.4)),
+                    })
+            ]
             .spacing(10)
             .padding(20)
-            .width(Length::Fill)
-            .height(Length::Fill);
+        )
+        .width(Length::Fixed(220.0))
+        .height(Length::Fill)
+        .style(theme::sidebar_container_style);
 
-        container(main_content)
+        // Main Content Area
+        let main_content = container(content)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::container_style)
+            .padding(20)
+            .style(theme::container_style); // Or transparent if background is handled by window
+
+        row![sidebar, main_content]
+            .width(Length::Fill)
+            .height(Length::Fill)
             .into()
     }
 
     pub fn theme(&self) -> Theme {
-        Theme::Dark
+        Theme::custom(
+            "CollapseTheme".to_string(),
+            theme::get_palette(self.appearance.theme, self.appearance.accent_color),
+        )
     }
 
     fn view_scan_tab(&self) -> Element<'_, Message> {
-        let title = text("CollapseScanner v".to_string() + env!("CARGO_PKG_VERSION"))
-            .size(38)
-            .style(|_theme: &Theme| text::Style {
-                color: Some(theme::ACCENT_COLOR),
+        let title = text(TRANSLATOR.get(self.appearance.language, "scan_title"))
+            .size(42)
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().primary),
             });
 
-        let subtitle = text("Advanced JAR/Class File Analysis Tool")
+        let subtitle = text(TRANSLATOR.get(self.appearance.language, "scan_subtitle"))
             .size(16)
-            .style(|_theme: &Theme| text::Style {
-                color: Some(theme::TEXT_SECONDARY),
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().text), // Or secondary
             });
 
         let path_row = row![
-            text_input("Select path to scan...", &self.settings.path)
-                .on_input(Message::PathInputChanged)
-                .padding(10)
-                .width(Length::FillPortion(4)),
-            button("Browse...")
+            text_input(
+                &TRANSLATOR.get(self.appearance.language, "select_path_placeholder"),
+                &self.settings.path,
+            )
+            .on_input(Message::PathInputChanged)
+            .padding(10)
+            .width(Length::FillPortion(4))
+            .style(theme::text_input_style),
+            button(text(TRANSLATOR.get(self.appearance.language, "browse_button")))
                 .on_press(Message::SelectPath)
                 .padding(10)
                 .style(theme::button_style),
@@ -302,12 +359,9 @@ impl CollapseApp {
         .align_y(Alignment::Center);
 
         let mode_picker = row![
-            text("Detection Mode:").width(Length::Fixed(140.0)),
+            text(TRANSLATOR.get(self.appearance.language, "detection_mode_label")).width(Length::Fixed(140.0)),
             pick_list(
                 &[
-                    DetectionMode::All,
-                    DetectionMode::Network,
-                    DetectionMode::Malicious,
                     DetectionMode::Obfuscation,
                 ][..],
                 Some(self.settings.mode),
@@ -322,14 +376,14 @@ impl CollapseApp {
         .align_y(Alignment::Center);
 
         let scan_button = match self.state {
-            AppState::Scanning => button("Cancel Scan")
+            AppState::Scanning => button(text(TRANSLATOR.get(self.appearance.language, "cancel_scan_button")))
                 .on_press(Message::CancelScan)
                 .padding(15)
                 .width(Length::Fill)
                 .style(theme::cancel_button_style),
 
             AppState::Idle | AppState::Completed | AppState::Cancelled | AppState::Error(_) => {
-                button("Start Scan")
+                button(text(TRANSLATOR.get(self.appearance.language, "start_scan_button")))
                     .on_press(Message::StartScan)
                     .padding(18)
                     .width(Length::Fill)
@@ -349,14 +403,14 @@ impl CollapseApp {
                 row![
                     text(percent_text)
                         .size(16)
-                        .style(|_theme: &Theme| text::Style {
-                            color: Some(theme::ACCENT_COLOR),
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.palette().primary),
                         }),
                     horizontal_space(),
                     text(files_text)
                         .size(14)
-                        .style(|_theme: &Theme| text::Style {
-                            color: Some(theme::TEXT_SECONDARY),
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.palette().text),
                         })
                 ],
             ]
@@ -367,17 +421,17 @@ impl CollapseApp {
 
         let status_section = match &self.state {
             AppState::Idle => {
-                column![text("Ready to scan")
+                column![text(TRANSLATOR.get(self.appearance.language, "ready_to_scan"))
                     .size(16)
-                    .style(|_theme: &Theme| text::Style {
-                        color: Some(theme::TEXT_SECONDARY),
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().text),
                     })]
             }
             AppState::Scanning => {
-                column![text("Scanning in progress...")
+                column![text(TRANSLATOR.get(self.appearance.language, "scanning_progress"))
                     .size(16)
-                    .style(|_theme: &Theme| text::Style {
-                        color: Some(theme::ACCENT_COLOR),
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().primary),
                     })]
             }
             AppState::Completed => {
@@ -387,30 +441,30 @@ impl CollapseApp {
                     .filter(|r| !r.matches.is_empty())
                     .count();
                 column![
-                    text(format!("Scan completed: {} findings", findings_count))
+                    text(TRANSLATOR.get_fmt(self.appearance.language, "scan_completed_findings", &findings_count.to_string()))
                         .size(16)
-                        .style(|_theme: &Theme| text::Style {
-                            color: Some(theme::DANGER_LOW),
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.palette().success),
                         }),
                     vertical_space().height(10),
-                    button("Go to Results")
+                    button(text(TRANSLATOR.get(self.appearance.language, "go_to_results")))
                         .on_press(Message::TabSelected(1))
                         .padding(12)
                         .style(theme::primary_button_style),
                 ]
             }
             AppState::Cancelled => {
-                column![text("Scan cancelled")
+                column![text(TRANSLATOR.get(self.appearance.language, "scan_cancelled"))
                     .size(16)
                     .style(|_theme: &Theme| text::Style {
                         color: Some(theme::WARNING_COLOR),
                     })]
             }
             AppState::Error(e) => {
-                column![text(format!("Error: {}", e))
+                column![text(TRANSLATOR.get_fmt(self.appearance.language, "scan_error", e))
                     .size(16)
-                    .style(|_theme: &Theme| text::Style {
-                        color: Some(theme::ERROR_COLOR),
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().danger),
                     })]
             }
         };
@@ -430,7 +484,7 @@ impl CollapseApp {
                 vertical_space().height(15),
                 status_section,
             ]
-            .spacing(8)
+            .spacing(16)
             .padding(30),
         )
         .style(theme::card_style)
@@ -439,17 +493,21 @@ impl CollapseApp {
     }
 
     fn view_results_tab(&self) -> Element<'_, Message> {
-        let title = text("Scan Results")
+        let title = text(TRANSLATOR.get(self.appearance.language, "results_title"))
             .size(28)
-            .style(|_theme: &Theme| text::Style {
-                color: Some(theme::TEXT_PRIMARY),
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().text),
             });
 
         let toolbar = row![
-            text_input("Search results...", &self.results_ui.search)
-                .on_input(Message::ResultsSearchChanged)
-                .padding(12)
-                .width(Length::FillPortion(3)),
+            text_input(
+                &TRANSLATOR.get(self.appearance.language, "search_placeholder"),
+                &self.results_ui.search
+            )
+            .on_input(Message::ResultsSearchChanged)
+            .padding(12)
+            .width(Length::FillPortion(3))
+            .style(theme::text_input_style),
             pick_list(
                 &SEVERITY_OPTIONS[..],
                 Some(self.results_ui.severity),
@@ -476,11 +534,11 @@ impl CollapseApp {
             .padding(12)
             .on_press(Message::ResultsSortDirectionToggled)
             .style(theme::button_style),
-            button("Export")
+            button(text(TRANSLATOR.get(self.appearance.language, "export_button")))
                 .padding(12)
                 .on_press(Message::ExportFilteredResults)
                 .style(theme::button_style),
-            button("Clear")
+            button(text(TRANSLATOR.get(self.appearance.language, "clear_button")))
                 .padding(12)
                 .on_press(Message::ClearResults)
                 .style(theme::button_style),
@@ -495,10 +553,11 @@ impl CollapseApp {
                     vertical_space().height(25),
                     toolbar,
                     vertical_space().height(50),
-                    text("No results yet. Run a scan to see results here.")
+                    vertical_space().height(50),
+                    text(TRANSLATOR.get(self.appearance.language, "no_results"))
                         .size(18)
-                        .style(|_theme: &Theme| text::Style {
-                            color: Some(theme::TEXT_SECONDARY),
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.palette().text),
                         }),
                 ]
                 .spacing(8)
@@ -526,21 +585,23 @@ impl CollapseApp {
 
         let summary = container(
             column![
-                text("Scan Summary")
+                text(TRANSLATOR.get(self.appearance.language, "scan_summary"))
                     .size(16)
-                    .style(|_theme: &Theme| text::Style {
-                        color: Some(theme::ACCENT_COLOR),
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().primary),
                     }),
                 vertical_space().height(2),
-                text(format!("Total files scanned: {}", self.results.len())).size(13),
-                text(format!(
-                    "Files with findings (after filter): {}",
-                    filtered_results.len()
+                text(TRANSLATOR.get_fmt(self.appearance.language, "total_files_scanned", &self.results.len().to_string())).size(13),
+                text(TRANSLATOR.get_fmt(
+                    self.appearance.language,
+                    "files_with_findings",
+                    &filtered_results.len().to_string()
                 ))
                 .size(13),
-                text(format!(
-                    "Total findings: {}",
-                    findings_by_type.values().map(|v| v.len()).sum::<usize>()
+                text(TRANSLATOR.get_fmt(
+                    self.appearance.language,
+                    "total_findings",
+                    &findings_by_type.values().map(|v| v.len()).sum::<usize>().to_string()
                 ))
                 .size(13),
             ]
@@ -564,7 +625,7 @@ impl CollapseApp {
                             color: Some(Color::from_rgb(0.75, 0.90, 1.0)),
                         }
                     ),
-                    container(text(format!("Risk: {}/10", result.danger_score)).style(
+                    container(text(TRANSLATOR.get_fmt(self.appearance.language, "risk_label", &result.danger_score.to_string())).style(
                         move |_theme: &Theme| text::Style {
                             color: Some(Color::WHITE),
                         }
@@ -579,7 +640,7 @@ impl CollapseApp {
                         ..Default::default()
                     })
                     .width(Length::FillPortion(1)),
-                    text(format!("Findings: {}", result.matches.len()))
+                    text(TRANSLATOR.get_fmt(self.appearance.language, "findings_count_label", &result.matches.len().to_string()))
                         .width(Length::FillPortion(1)),
                 ]
                 .spacing(15)
@@ -605,10 +666,10 @@ impl CollapseApp {
                 details = details.push(vertical_space().height(12));
                 details =
                     details.push(
-                        text("Findings:")
+                        text(TRANSLATOR.get(self.appearance.language, "detailed_findings_label"))
                             .size(16)
-                            .style(|_theme: &Theme| text::Style {
-                                color: Some(theme::ACCENT_COLOR),
+                            .style(|theme: &Theme| text::Style {
+                                color: Some(theme.palette().primary),
                             }),
                     );
 
@@ -617,7 +678,7 @@ impl CollapseApp {
                         row![
                             text(format!("• {}: ", finding_type)).size(14).style(
                                 |_theme: &Theme| text::Style {
-                                    color: Some(Color::from_rgb(0.55, 0.85, 1.0)),
+                                    color: Some(Color::from_rgb(0.6, 0.8, 1.0)),
                                 }
                             ),
                             text(value).size(14),
@@ -628,10 +689,10 @@ impl CollapseApp {
 
                 findings_list = findings_list.push(
                     container(details)
-                        .style(|_theme: &Theme| container::Style {
-                            background: Some(Color::from_rgb(0.10, 0.11, 0.16).into()),
+                        .style(|theme: &Theme| container::Style {
+                            background: Some(theme::surface_color(theme).into()),
                             border: iced::Border {
-                                color: Color::from_rgb(0.25, 0.28, 0.35),
+                                color: theme::border_color(theme),
                                 width: 1.5,
                                 radius: 10.0.into(),
                             },
@@ -671,34 +732,124 @@ impl CollapseApp {
     }
 
     fn view_settings_tab(&self) -> Element<'_, Message> {
-        let title = text("Advanced Settings")
+        let title = text(TRANSLATOR.get(self.appearance.language, "settings_title"))
             .size(28)
-            .style(|_theme: &Theme| text::Style {
-                color: Some(theme::TEXT_PRIMARY),
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().text),
             });
 
+        // Appearance Section
+        let appearance_title = text(TRANSLATOR.get(self.appearance.language, "appearance_label"))
+            .size(20)
+            .style(|theme: &Theme| text::Style {
+                 color: Some(theme.palette().primary),
+            });
+
+        let language_row = row![
+            text(TRANSLATOR.get(self.appearance.language, "language_label")).width(Length::Fixed(150.0)),
+            pick_list(
+                &Language::ALL[..],
+                Some(self.appearance.language),
+                Message::LanguageChanged
+            )
+            .width(Length::Fixed(200.0))
+            .style(theme::pick_list_style)
+            .menu_style(theme::pick_list_menu_style),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center);
+
+        let theme_row = row![
+            text(TRANSLATOR.get(self.appearance.language, "theme_label")).width(Length::Fixed(150.0)),
+            pick_list(
+                &[ThemeMode::Dark, ThemeMode::Light][..],
+                Some(self.appearance.theme),
+                Message::ThemeChanged
+            )
+            .width(Length::Fixed(200.0))
+            .style(theme::pick_list_style)
+            .menu_style(theme::pick_list_menu_style),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center);
+
+        // Expanded color palette
+        let color_grid = vec![
+            Color::from_rgb(0.0, 0.48, 1.0),   // Blue
+            Color::from_rgb(0.0, 0.75, 1.0),   // Sky
+            Color::from_rgb(0.3, 0.0, 0.6),   // Indigo
+            Color::from_rgb(0.5, 0.0, 0.5),   // Purple
+            Color::from_rgb(1.0, 0.2, 0.6),   // Pink
+            Color::from_rgb(0.8, 0.2, 0.2),   // Red
+            Color::from_rgb(1.0, 0.4, 0.0),   // Orange
+            Color::from_rgb(1.0, 0.8, 0.0),   // Yellow
+            Color::from_rgb(0.2, 0.8, 0.2),   // Green
+            Color::from_rgb(0.0, 0.6, 0.2),   // Dark Green
+            Color::from_rgb(0.0, 0.8, 0.6),   // Teal
+            Color::from_rgb(0.6, 0.3, 0.0),   // Brown
+            Color::from_rgb(0.4, 0.4, 0.4),   // Gray
+            Color::from_rgb(1.0, 1.0, 1.0),   // White
+            Color::from_rgb(0.0, 0.0, 0.0),   // Black
+        ];
+
+        let accent_row = column![
+            text(TRANSLATOR.get(self.appearance.language, "accent_color_label")).width(Length::Fill),
+            row(
+                color_grid.into_iter().map(|c| {
+                    button(text("  ").size(16))
+                        .style(move |theme: &Theme, _status| {
+                             let is_selected = theme.palette().primary == c;
+                             button::Style {
+                                 background: Some(c.into()),
+                                 text_color: Color::TRANSPARENT,
+                                 border: iced::Border {
+                                     radius: 12.0.into(),
+                                     width: if is_selected { 2.0 } else { 0.0 },
+                                     color: if is_selected { theme.palette().text } else { Color::TRANSPARENT },
+                                 },
+                                 shadow: iced::Shadow::default(),
+                             }
+                        })
+                        .on_press(Message::AccentColorChanged(c))
+                        .into()
+                })
+                .collect::<Vec<Element<'_, Message>>>()
+            ).spacing(8).align_y(Alignment::Center)
+        ].spacing(8);
+
+        let appearance_section = column![
+            appearance_title,
+            language_row,
+            theme_row,
+            accent_row,
+        ].spacing(20);
+
+        let divider = vertical_space().height(20);
+
         let threads_row = row![
-            text("Thread count (0 = auto):").width(Length::Fixed(200.0)),
+            text(TRANSLATOR.get(self.appearance.language, "thread_count_label")).width(Length::Fixed(200.0)),
             text_input("0", &self.settings.threads)
                 .on_input(Message::ThreadsChanged)
                 .padding(12)
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(theme::text_input_style),
         ]
         .spacing(12)
         .align_y(Alignment::Center);
 
         let exclude_section = column![
-            text("Exclude Patterns:")
+            text(TRANSLATOR.get(self.appearance.language, "exclude_patterns_label"))
                 .size(18)
-                .style(|_theme: &Theme| text::Style {
-                    color: Some(theme::ACCENT_COLOR),
+                .style(|theme: &Theme| text::Style {
+                    color: Some(theme.palette().primary),
                 }),
             row![
                 text_input("*.txt, test/**", &self.settings.exclude_pattern_input)
                     .on_input(Message::ExcludePatternChanged)
                     .padding(12)
-                    .width(Length::FillPortion(3)),
-                button("Add")
+                    .width(Length::FillPortion(3))
+                    .style(theme::text_input_style),
+                button(text(TRANSLATOR.get(self.appearance.language, "add_button")))
                     .on_press(Message::AddExcludePattern)
                     .padding(12)
                     .style(theme::button_style),
@@ -713,7 +864,7 @@ impl CollapseApp {
             exclude_list = exclude_list.push(
                 row![
                     text(pattern).width(Length::Fill),
-                    button("Remove")
+                    button(text(TRANSLATOR.get(self.appearance.language, "remove_button")))
                         .padding(10)
                         .on_press(Message::RemoveExcludePattern(i))
                         .style(theme::button_style),
@@ -724,17 +875,18 @@ impl CollapseApp {
         }
 
         let find_section = column![
-            text("Find Patterns (only scan matching):")
+            text(TRANSLATOR.get(self.appearance.language, "find_patterns_label"))
                 .size(18)
-                .style(|_theme: &Theme| text::Style {
-                    color: Some(theme::ACCENT_COLOR),
+                .style(|theme: &Theme| text::Style {
+                    color: Some(theme.palette().primary),
                 }),
             row![
                 text_input("*.class, com/**", &self.settings.find_pattern_input)
                     .on_input(Message::FindPatternChanged)
                     .padding(12)
-                    .width(Length::FillPortion(3)),
-                button("Add")
+                    .width(Length::FillPortion(3))
+                    .style(theme::text_input_style),
+                button(text(TRANSLATOR.get(self.appearance.language, "add_button")))
                     .on_press(Message::AddFindPattern)
                     .padding(12)
                     .style(theme::button_style),
@@ -749,7 +901,7 @@ impl CollapseApp {
             find_list = find_list.push(
                 row![
                     text(pattern).width(Length::Fill),
-                    button("Remove")
+                    button(text(TRANSLATOR.get(self.appearance.language, "remove_button")))
                         .padding(10)
                         .on_press(Message::RemoveFindPattern(i))
                         .style(theme::button_style),
@@ -759,27 +911,27 @@ impl CollapseApp {
             );
         }
 
-        let settings_content = column![
-            title,
-            vertical_space().height(20),
-            threads_row,
-            vertical_space().height(25),
-            exclude_section,
-            exclude_list,
-            vertical_space().height(25),
-            find_section,
-            find_list,
-        ]
-        .spacing(8);
-
         container(
-            scrollable(settings_content)
-                .height(Length::Fill)
-                .width(Length::Fill),
+            scrollable(
+                column![
+                    title,
+                    vertical_space().height(30),
+                    appearance_section,
+                    divider,
+                    threads_row,
+                    vertical_space().height(20),
+                    exclude_section,
+                    exclude_list,
+                    vertical_space().height(20),
+                    find_section,
+                    find_list,
+                ]
+                .spacing(16)
+            )
         )
-        .padding(30)
         .style(theme::card_style)
         .width(Length::Fill)
+        .padding(30)
         .into()
     }
 
@@ -814,7 +966,7 @@ impl CollapseApp {
             verbose: false,
         };
 
-        let scanner = CollapseScanner::new(scanner_options)
+        let scanner = CollapseFindOBFScanner::new(scanner_options)
             .map_err(|e| format!("Failed to create scanner: {}", e))?;
 
         let results = scanner
@@ -913,7 +1065,7 @@ impl CollapseApp {
 }
 
 fn tab_button<'a>(
-    label: &'a str,
+    label: String,
     icon_svg: &'a str,
     index: usize,
     active: usize,
@@ -923,66 +1075,49 @@ fn tab_button<'a>(
     let icon = Svg::new(svg::Handle::from_memory(icon_svg.as_bytes().to_vec()))
         .width(Length::Fixed(18.0))
         .height(Length::Fixed(18.0))
-        .style(|_theme, _status| svg::Style {
-            color: Some(Color::WHITE),
+        .style(move |theme, _status| svg::Style {
+            color: Some(if is_active {
+                Color::WHITE
+            } else {
+                theme::text_secondary(theme)
+            }),
         });
 
-    let content = row![icon, text(label).size(15)]
-        .spacing(10)
-        .align_y(Alignment::Center);
+    let content = row![
+        icon,
+        text(label).size(14).style(move |theme: &Theme| text::Style {
+             color: Some(if is_active {
+                 Color::WHITE
+             } else {
+                 theme::text_secondary(theme)
+             })
+        })
+    ]
+    .spacing(12)
+    .align_y(Alignment::Center);
 
     button(content)
         .on_press(Message::TabSelected(index))
-        .padding(12)
-        .style(move |_theme: &Theme, status| {
+        .padding(10)
+        .width(Length::Fill)
+        .style(move |theme: &Theme, status| {
             if is_active {
-                let hover_boost = matches!(status, button::Status::Hovered);
-                button::Style {
-                    background: Some(theme::ACCENT_COLOR.into()),
-                    text_color: Color::WHITE,
-                    border: iced::Border {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
-                        width: 0.0,
-                        radius: 10.0.into(),
-                    },
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.1, 0.4, 0.7, if hover_boost { 0.5 } else { 0.4 }),
-                        offset: iced::Vector::new(0.0, if hover_boost { 3.0 } else { 2.0 }),
-                        blur_radius: 10.0,
-                    },
-                }
+                theme::active_tab_button_style(theme, status)
             } else {
-                let (bg_color, border_color) = match status {
-                    button::Status::Hovered => (theme::SURFACE_COLOR, theme::BORDER_HIGHLIGHT),
-                    _ => (Color::from_rgb(0.09, 0.10, 0.14), theme::BORDER_COLOR),
-                };
-                button::Style {
-                    background: Some(bg_color.into()),
-                    text_color: theme::TEXT_SECONDARY,
-                    border: iced::Border {
-                        color: border_color,
-                        width: 1.5,
-                        radius: 10.0.into(),
-                    },
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.15),
-                        offset: iced::Vector::new(0.0, 1.0),
-                        blur_radius: 4.0,
-                    },
-                }
+                theme::tab_button_style(theme, status)
             }
         })
         .into()
 }
 
 pub fn run_gui() -> iced::Result {
-    iced::application("CollapseScanner", CollapseApp::update, CollapseApp::view)
-        .theme(CollapseApp::theme)
-        .subscription(CollapseApp::subscription)
+    iced::application("CollapseFindOBF", CollapseFindOBFApp::update, CollapseFindOBFApp::view)
+        .theme(CollapseFindOBFApp::theme)
+        .subscription(CollapseFindOBFApp::subscription)
         .window(iced::window::Settings {
             size: iced::Size::new(1000.0, 800.0),
             min_size: Some(iced::Size::new(800.0, 600.0)),
             ..Default::default()
         })
-        .run_with(CollapseApp::new)
+        .run_with(CollapseFindOBFApp::new)
 }

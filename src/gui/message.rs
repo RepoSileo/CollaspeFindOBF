@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
 use crate::types::{DetectionMode, ScanResult};
+use crate::gui::lang::Language;
+use crate::gui::state::ThemeMode;
+use iced::Color;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -32,4 +35,9 @@ pub enum Message {
     ResultsSortDirectionToggled,
     ExportFilteredResults,
     ExportResultsCompleted(Result<(), String>),
+
+    // Appearance
+    LanguageChanged(Language),
+    ThemeChanged(ThemeMode),
+    AccentColorChanged(Color),
 }

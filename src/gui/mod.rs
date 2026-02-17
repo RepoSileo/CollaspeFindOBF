@@ -3,3 +3,4 @@ pub mod icons;
 pub mod message;
 pub mod state;
 pub mod theme;
+pub mod lang;

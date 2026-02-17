@@ -1,199 +1,319 @@
-use iced::widget::{button, container};
+use iced::widget::{button, container, pick_list, progress_bar, text_input};
 use iced::{Background, Border, Color, Theme};
+use iced::theme::Palette;
 
-pub const BG_COLOR: Color = Color::from_rgb(0.06, 0.06, 0.08);
-pub const SURFACE_COLOR: Color = Color::from_rgb(0.09, 0.10, 0.14);
-pub const CARD_COLOR: Color = Color::from_rgb(0.12, 0.13, 0.18);
-pub const BORDER_COLOR: Color = Color::from_rgb(0.20, 0.22, 0.28);
-pub const BORDER_HIGHLIGHT: Color = Color::from_rgb(0.30, 0.35, 0.45);
+use crate::gui::state::ThemeMode;
 
-pub const ACCENT_COLOR: Color = Color::from_rgb(0.25, 0.75, 1.0);
-pub const ACCENT_COLOR_MUTED: Color = Color::from_rgb(0.18, 0.40, 0.58);
-pub const ACCENT_HOVER: Color = Color::from_rgb(0.30, 0.82, 1.0);
+// --- Palette Generation ---
 
-pub const WARNING_COLOR: Color = Color::from_rgb(1.0, 0.75, 0.15);
-pub const ERROR_COLOR: Color = Color::from_rgb(1.0, 0.35, 0.40);
-pub const ERROR_COLOR_MUTED: Color = Color::from_rgb(0.65, 0.25, 0.30);
+pub fn get_palette(mode: ThemeMode, accent: Color) -> Palette {
+    match mode {
+        ThemeMode::Dark => Palette {
+            background: Color::from_rgb(0.12, 0.12, 0.12),
+            text: Color::WHITE,
+            primary: accent,
+            success: Color::from_rgb(0.20, 0.78, 0.35),
+            danger: Color::from_rgb(1.0, 0.23, 0.19),
+        },
+        ThemeMode::Light => Palette {
+            background: Color::WHITE,
+            text: Color::BLACK,
+            primary: accent,
+            success: Color::from_rgb(0.20, 0.78, 0.35),
+            danger: Color::from_rgb(1.0, 0.23, 0.19),
+        },
+    }
+}
 
-pub const TEXT_PRIMARY: Color = Color::from_rgb(0.96, 0.97, 0.98);
-pub const TEXT_SECONDARY: Color = Color::from_rgb(0.65, 0.68, 0.72);
+// --- Constants (Fallback/Fixed) ---
 
-pub const DANGER_CRITICAL: Color = ERROR_COLOR;
-pub const DANGER_CRITICAL_MUTED: Color = ERROR_COLOR_MUTED;
-pub const DANGER_HIGH: Color = Color::from_rgb(1.0, 0.60, 0.20);
-pub const DANGER_MEDIUM: Color = WARNING_COLOR;
-pub const DANGER_LOW: Color = Color::from_rgb(0.40, 0.90, 0.60);
+pub const WARNING_COLOR: Color = Color::from_rgb(1.0, 0.80, 0.0);
+pub const BORDER_COLOR_DARK: Color = Color::from_rgb(0.25, 0.25, 0.25);
+pub const BORDER_COLOR_LIGHT: Color = Color::from_rgb(0.85, 0.85, 0.85);
 
-pub fn container_style(_theme: &Theme) -> container::Style {
+// --- Helpers ---
+
+fn is_dark(theme: &Theme) -> bool {
+    matches!(theme.palette().text, Color::WHITE) // Simple heuristic
+}
+
+pub fn border_color(theme: &Theme) -> Color {
+    if is_dark(theme) {
+        BORDER_COLOR_DARK
+    } else {
+        BORDER_COLOR_LIGHT
+    }
+}
+
+pub fn surface_color(theme: &Theme) -> Color {
+    let base = theme.palette().background;
+    if is_dark(theme) {
+        Color::from_rgb(base.r + 0.05, base.g + 0.05, base.b + 0.05)
+    } else {
+        Color::from_rgb(base.r - 0.03, base.g - 0.03, base.b - 0.03) // Slightly darker for light mode surface
+    }
+}
+
+pub fn sidebar_bg(theme: &Theme) -> Color {
+    let base = theme.palette().background;
+    if is_dark(theme) {
+         Color::from_rgb(base.r - 0.01, base.g - 0.01, base.b - 0.01)
+    } else {
+         Color::from_rgb(0.96, 0.96, 0.96) // Light gray for sidebar
+    }
+}
+
+pub fn text_secondary(theme: &Theme) -> Color {
+    if is_dark(theme) {
+        Color::from_rgb(0.55, 0.55, 0.55)
+    } else {
+        Color::from_rgb(0.40, 0.40, 0.40)
+    }
+}
+
+pub fn danger_color(score: u8) -> Color {
+    match score {
+        8..=10 => Color::from_rgb(1.0, 0.23, 0.19),
+        5..=7 => Color::from_rgb(1.0, 0.58, 0.0),
+        3..=4 => WARNING_COLOR,
+        _ => Color::from_rgb(0.20, 0.78, 0.35),
+    }
+}
+
+
+// --- Styles ---
+
+pub fn container_style(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(BG_COLOR.into()),
-        text_color: Some(TEXT_PRIMARY),
+        background: Some(theme.palette().background.into()),
+        text_color: Some(theme.palette().text),
         ..Default::default()
     }
 }
 
-pub fn card_style(_theme: &Theme) -> container::Style {
+pub fn sidebar_container_style(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(CARD_COLOR.into()),
-        border: iced::Border {
-            color: BORDER_COLOR,
-            width: 1.5,
+        background: Some(sidebar_bg(theme).into()),
+        border: Border {
+            color: border_color(theme),
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+pub fn card_style(theme: &Theme) -> container::Style {
+    let bg = if is_dark(theme) {
+        Color::from_rgba(0.20, 0.20, 0.20, 0.60)
+    } else {
+        Color::from_rgba(1.0, 1.0, 1.0, 0.80)
+    };
+    
+    container::Style {
+        background: Some(bg.into()),
+        border: Border {
+            color: border_color(theme),
+            width: 1.0,
             radius: 12.0.into(),
         },
         shadow: iced::Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.3),
-            offset: iced::Vector::new(0.0, 4.0),
-            blur_radius: 12.0,
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.1),
+            offset: iced::Vector::new(0.0, 5.0),
+            blur_radius: 15.0,
         },
         ..Default::default()
     }
 }
 
-pub fn button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let (bg_color, border_color) = match status {
-        button::Status::Hovered => (Color::from_rgb(0.12, 0.14, 0.20), BORDER_HIGHLIGHT),
-        button::Status::Pressed => (Color::from_rgb(0.08, 0.09, 0.13), ACCENT_COLOR),
-        _ => (SURFACE_COLOR, BORDER_COLOR),
+pub fn button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let bg_color = match status {
+        button::Status::Hovered => if is_dark(theme) { Color::from_rgb(0.25, 0.25, 0.25) } else { Color::from_rgb(0.90, 0.90, 0.90) },
+        button::Status::Pressed => if is_dark(theme) { Color::from_rgb(0.22, 0.22, 0.22) } else { Color::from_rgb(0.85, 0.85, 0.85) },
+        _ => surface_color(theme),
     };
 
     button::Style {
         background: Some(bg_color.into()),
-        text_color: TEXT_PRIMARY,
-        border: iced::Border {
-            color: border_color,
-            width: 1.5,
+        text_color: theme.palette().text,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
             radius: 8.0.into(),
         },
         shadow: iced::Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.2),
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.05),
+            offset: iced::Vector::new(0.0, 1.0),
+            blur_radius: 2.0,
+        },
+    }
+}
+
+pub fn primary_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let base = theme.palette().primary;
+    let bg_color = match status {
+        button::Status::Hovered => Color::from_rgb(base.r * 1.1, base.g * 1.1, base.b * 1.1), // Naive lighten
+        button::Status::Pressed => Color::from_rgb(base.r * 0.9, base.g * 0.9, base.b * 0.9), // Naive darken
+        _ => base,
+    };
+
+    button::Style {
+        background: Some(bg_color.into()),
+        text_color: Color::WHITE,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 8.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color::from_rgba(base.r, base.g, base.b, 0.4),
+            offset: iced::Vector::new(0.0, 4.0),
+            blur_radius: 10.0,
+        },
+    }
+}
+
+pub fn cancel_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let base = theme.palette().danger;
+     let bg_color = match status {
+        button::Status::Hovered => Color::from_rgb(base.r * 1.1, base.g * 1.1, base.b * 1.1),
+        button::Status::Pressed => Color::from_rgb(base.r * 0.9, base.g * 0.9, base.b * 0.9),
+        _ => base,
+    };
+
+    button::Style {
+        background: Some(bg_color.into()),
+        text_color: Color::WHITE,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 8.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color::from_rgba(base.r, base.g, base.b, 0.3),
+            offset: iced::Vector::new(0.0, 4.0),
+            blur_radius: 10.0,
+        },
+    }
+}
+
+pub fn result_button_style(theme: &Theme, status: button::Status) -> button::Style {
+     let bg_color = match status {
+        button::Status::Hovered => if is_dark(theme) { Color::from_rgb(0.20, 0.20, 0.20) } else { Color::from_rgb(0.95, 0.95, 0.95) },
+        button::Status::Pressed => if is_dark(theme) { Color::from_rgb(0.18, 0.18, 0.18) } else { Color::from_rgb(0.90, 0.90, 0.90) },
+        _ => if is_dark(theme) { Color::from_rgb(0.16, 0.16, 0.16) } else { Color::WHITE }, // White card in light mode
+    };
+
+    button::Style {
+        background: Some(bg_color.into()),
+        text_color: theme.palette().text,
+        border: Border {
+            color: border_color(theme),
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.05),
             offset: iced::Vector::new(0.0, 2.0),
             blur_radius: 4.0,
         },
     }
 }
 
-pub fn primary_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let (bg_color, shadow_offset) = match status {
-        button::Status::Hovered => (ACCENT_HOVER, 3.0),
-        button::Status::Pressed => (ACCENT_COLOR_MUTED, 1.0),
-        _ => (ACCENT_COLOR, 2.0),
-    };
-
-    button::Style {
-        background: Some(bg_color.into()),
-        text_color: Color::WHITE,
-        border: iced::Border {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
-            width: 0.0,
-            radius: 10.0.into(),
-        },
-        shadow: iced::Shadow {
-            color: Color::from_rgba(0.1, 0.4, 0.7, 0.4),
-            offset: iced::Vector::new(0.0, shadow_offset),
-            blur_radius: 8.0,
-        },
-    }
-}
-
-pub fn cancel_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let (bg_color, shadow_offset) = match status {
-        button::Status::Hovered => (Color::from_rgb(1.0, 0.40, 0.45), 3.0),
-        button::Status::Pressed => (DANGER_CRITICAL_MUTED, 1.0),
-        _ => (ERROR_COLOR, 2.0),
-    };
-
-    button::Style {
-        background: Some(bg_color.into()),
-        text_color: Color::WHITE,
-        border: iced::Border {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
-            width: 0.0,
-            radius: 10.0.into(),
-        },
-        shadow: iced::Shadow {
-            color: Color::from_rgba(0.8, 0.2, 0.2, 0.4),
-            offset: iced::Vector::new(0.0, shadow_offset),
-            blur_radius: 8.0,
-        },
-    }
-}
-
-pub fn result_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let (bg_color, border_width) = match status {
-        button::Status::Hovered => (Color::from_rgb(0.14, 0.15, 0.21), 1.5),
-        button::Status::Pressed => (Color::from_rgb(0.10, 0.11, 0.16), 1.5),
-        _ => (SURFACE_COLOR, 1.0),
-    };
-
-    button::Style {
-        background: Some(bg_color.into()),
-        text_color: TEXT_PRIMARY,
-        border: iced::Border {
-            color: BORDER_COLOR,
-            width: border_width,
-            radius: 8.0.into(),
-        },
-        shadow: iced::Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.15),
-            offset: iced::Vector::new(0.0, 2.0),
-            blur_radius: 6.0,
-        },
-    }
-}
-
 pub fn pick_list_style(
-    _theme: &Theme,
-    _status: iced::widget::pick_list::Status,
-) -> iced::widget::pick_list::Style {
-    iced::widget::pick_list::Style {
-        text_color: TEXT_SECONDARY,
-        placeholder_color: TEXT_SECONDARY,
-        handle_color: ACCENT_COLOR,
-        background: Background::Color(SURFACE_COLOR),
+    theme: &Theme,
+    _status: pick_list::Status,
+) -> pick_list::Style {
+    pick_list::Style {
+        text_color: theme.palette().text,
+        placeholder_color: text_secondary(theme),
+        handle_color: theme.palette().primary,
+        background: Background::Color(surface_color(theme)),
         border: Border {
-            radius: 6.0.into(),
+            radius: 8.0.into(),
             width: 1.0,
-            color: BORDER_COLOR,
+            color: border_color(theme),
         },
     }
 }
 
-pub fn pick_list_menu_style(_theme: &Theme) -> iced::overlay::menu::Style {
+pub fn pick_list_menu_style(theme: &Theme) -> iced::overlay::menu::Style {
     iced::overlay::menu::Style {
-        text_color: TEXT_PRIMARY,
-        background: Background::Color(CARD_COLOR),
+        text_color: theme.palette().text,
+        background: Background::Color(if is_dark(theme) { Color::from_rgb(0.15, 0.15, 0.15) } else { Color::WHITE }),
         border: Border {
-            radius: 6.0.into(),
+            radius: 8.0.into(),
             width: 1.0,
-            color: BORDER_COLOR,
+            color: border_color(theme),
         },
         selected_text_color: Color::WHITE,
-        selected_background: Background::Color(Color {
-            r: ACCENT_COLOR.r * 0.6,
-            g: ACCENT_COLOR.g * 0.6,
-            b: ACCENT_COLOR.b * 0.6,
-            a: ACCENT_COLOR.a,
-        }),
+        selected_background: Background::Color(theme.palette().primary),
     }
 }
 
-pub fn danger_color(score: u8) -> Color {
-    match score {
-        8..=10 => DANGER_CRITICAL,
-        5..=7 => DANGER_HIGH,
-        3..=4 => DANGER_MEDIUM,
-        _ => DANGER_LOW,
-    }
-}
 
-pub fn progress_bar_style(_theme: &Theme) -> iced::widget::progress_bar::Style {
-    iced::widget::progress_bar::Style {
-        background: Background::Color(SURFACE_COLOR),
-        bar: Background::Color(ACCENT_COLOR),
+pub fn progress_bar_style(theme: &Theme) -> progress_bar::Style {
+    progress_bar::Style {
+        background: Background::Color(surface_color(theme)),
+        bar: Background::Color(theme.palette().primary),
         border: Border {
-            radius: 8.0.into(),
+            radius: 4.0.into(),
             width: 0.0,
             color: Color::TRANSPARENT,
+        },
+    }
+}
+
+pub fn text_input_style(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        background: Background::Color(if is_dark(theme) { Color::from_rgb(0.12, 0.12, 0.12) } else { Color::WHITE }),
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: match status {
+                text_input::Status::Focused => theme.palette().primary,
+                _ => border_color(theme),
+            }
+        },
+        icon: text_secondary(theme),
+        placeholder: text_secondary(theme),
+        value: theme.palette().text,
+        selection: Color::from_rgba(theme.palette().primary.r, theme.palette().primary.g, theme.palette().primary.b, 0.3),
+    }
+}
+
+pub fn tab_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let (bg_color, text_color) = match status {
+        button::Status::Hovered => (Color::from_rgba(0.5, 0.5, 0.5, 0.1), theme.palette().text),
+        button::Status::Pressed => (Color::from_rgba(0.5, 0.5, 0.5, 0.2), theme.palette().text),
+        _ => (Color::TRANSPARENT, text_secondary(theme)),
+    };
+
+    button::Style {
+        background: Some(bg_color.into()),
+        text_color,
+        border: Border {
+            radius: 6.0.into(),
+            width: 0.0,
+            color: Color::TRANSPARENT,
+        },
+        shadow: iced::Shadow::default(),
+    }
+}
+
+pub fn active_tab_button_style(theme: &Theme, _status: button::Status) -> button::Style {
+    button::Style {
+        background: Some(theme.palette().primary.into()),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 6.0.into(),
+            width: 0.0,
+            color: Color::TRANSPARENT,
+        },
+        shadow: iced::Shadow {
+             color: Color::from_rgba(theme.palette().primary.r, theme.palette().primary.g, theme.palette().primary.b, 0.4),
+             offset: iced::Vector::new(0.0, 2.0),
+             blur_radius: 8.0,
         },
     }
 }
