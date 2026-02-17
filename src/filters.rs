@@ -126,6 +126,7 @@ lazy_static::lazy_static! {
     };
 }
 
+#[allow(dead_code)]
 pub fn is_known_good_ip(ip: &str) -> bool {
     if let Ok(addr) = ip.parse::<IpAddr>() {
         if GOOD_IP_ADDRS.contains(&addr) {

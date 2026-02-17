@@ -10,6 +10,7 @@ pub fn truncate_string(s: &str, max_len: usize) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn extract_domain(url_str: &str) -> String {
     let get_host = |url: Url| -> Option<String> {
         url.host_str()
@@ -40,6 +41,7 @@ pub fn extract_domain(url_str: &str) -> String {
     "".to_string()
 }
 
+#[allow(dead_code)]
 pub fn get_simple_name(fqn: &str) -> &str {
     let name_part = fqn.strip_suffix('/').unwrap_or(fqn);
 

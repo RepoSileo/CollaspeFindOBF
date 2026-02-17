@@ -65,25 +65,19 @@ impl Progress {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum FindingType {
-    IpAddress,
-    IpV6Address,
-    Url,
-    SuspiciousUrl,
     DiscordWebhook,
-    SuspiciousKeyword,
     ObfuscationUnicode,
+    ObfuscationRandomName,
+    ObfuscationString,
 }
 
 impl std::fmt::Display for FindingType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FindingType::IpAddress => write!(f, "IPv4 Address"),
-            FindingType::IpV6Address => write!(f, "IPv6 Address"),
-            FindingType::Url => write!(f, "URL"),
-            FindingType::SuspiciousUrl => write!(f, "Suspicious URL"),
             FindingType::DiscordWebhook => write!(f, "Discord Webhook"),
-            FindingType::SuspiciousKeyword => write!(f, "Suspicious Keyword"),
-            FindingType::ObfuscationUnicode => write!(f, "Obfuscation (Unicode Name)"),
+            FindingType::ObfuscationUnicode => write!(f, "Obfuscation (Unicode)"),
+            FindingType::ObfuscationRandomName => write!(f, "Obfuscation (Random Name)"),
+            FindingType::ObfuscationString => write!(f, "Obfuscation (String)"),
         }
     }
 }
@@ -92,12 +86,10 @@ impl std::fmt::Display for FindingType {
 impl FindingType {
     pub fn with_emoji(&self) -> (&'static str, &'static str) {
         match self {
-            FindingType::IpAddress | FindingType::IpV6Address => ("🌐", "red"),
-            FindingType::Url => ("🔗", "blue"),
-            FindingType::SuspiciousUrl => ("⚠️ ", "yellow"),
             FindingType::DiscordWebhook => ("🤖", "red"),
-            FindingType::SuspiciousKeyword => ("❗", "red"),
-            FindingType::ObfuscationUnicode => ("㊙️ ", "magenta"),
+            FindingType::ObfuscationUnicode => ("㊙️", "magenta"),
+            FindingType::ObfuscationRandomName => ("🔀", "magenta"),
+            FindingType::ObfuscationString => ("📝", "magenta"),
         }
     }
 }
@@ -105,23 +97,19 @@ impl FindingType {
 impl FindingType {
     pub fn base_score(&self) -> u8 {
         match self {
-            FindingType::IpAddress | FindingType::IpV6Address => 3,
-            FindingType::Url => 2,
-            FindingType::SuspiciousUrl => 5,
             FindingType::DiscordWebhook => 10,
-            FindingType::SuspiciousKeyword => 3,
-            FindingType::ObfuscationUnicode => 1,
+            FindingType::ObfuscationUnicode => 4,  // Увеличил с 2 до 4
+            FindingType::ObfuscationRandomName => 5,  // Увеличил с 3 до 5
+            FindingType::ObfuscationString => 4,  // Увеличил с 2 до 4
         }
     }
 
     pub fn max_contribution(&self) -> u8 {
         match self {
-            FindingType::SuspiciousUrl => 9,
-            FindingType::IpAddress | FindingType::IpV6Address => 6,
-            FindingType::Url => 6,
-            FindingType::SuspiciousKeyword => 6,
-            FindingType::ObfuscationUnicode => 4,
             FindingType::DiscordWebhook => 10,
+            FindingType::ObfuscationUnicode => 12,  // Увеличил с 6 до 12
+            FindingType::ObfuscationRandomName => 15,  // Увеличил с 6 до 15
+            FindingType::ObfuscationString => 8,  // Увеличил с 4 до 8
         }
     }
 }
@@ -162,25 +150,20 @@ pub struct ResourceInfo {
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum DetectionMode {
-    Network,
-    Malicious,
     Obfuscation,
-    All,
 }
 
 impl std::fmt::Display for DetectionMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DetectionMode::Network => write!(f, "Network"),
-            DetectionMode::Malicious => write!(f, "Malicious"),
             DetectionMode::Obfuscation => write!(f, "Obfuscation"),
-            DetectionMode::All => write!(f, "All"),
         }
     }
 }
 
 #[derive(Clone)]
 pub struct ScannerOptions {
+    #[allow(dead_code)]
     pub mode: DetectionMode,
     pub verbose: bool,
     pub ignore_keywords_file: Option<PathBuf>,
@@ -192,7 +175,7 @@ pub struct ScannerOptions {
 impl Default for ScannerOptions {
     fn default() -> Self {
         ScannerOptions {
-            mode: DetectionMode::All,
+            mode: DetectionMode::Obfuscation,
             verbose: false,
             ignore_keywords_file: None,
             exclude_patterns: Vec::new(),

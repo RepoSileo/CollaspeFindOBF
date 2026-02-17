@@ -1,3 +1,6 @@
+#![cfg_attr(all(not(debug_assertions), feature = "gui"), windows_subsystem = "windows")]
+#[macro_use]
+mod color_macros;
 mod config;
 mod detection;
 mod errors;
@@ -12,7 +15,7 @@ mod gui;
 
 #[cfg(all(feature = "cli", not(feature = "gui")))]
 use {
-    crate::scanner::scan::CollapseScanner,
+    crate::scanner::scan::CollapseFindOBFScanner,
     crate::types::{DetectionMode, FindingType, ScanResult, ScannerOptions},
     clap::Parser,
     colored::Colorize,
@@ -26,11 +29,11 @@ use {
 #[cfg(all(feature = "cli", not(feature = "gui")))]
 #[derive(Parser)]
 #[clap(
-    name = "CollapseScanner",
+    name = "CollapseFindOBF",
     author,
     version,
     about = "Advanced JAR/class file analysis and reverse engineering tool",
-    long_about = "CollapseScanner is a powerful static analysis tool designed for security researchers, \
+    long_about = "CollapseFindOBF is a powerful static analysis tool designed for security researchers, \
                   malware analysts, and developers to analyze Java JAR files and class files. It detects \
                   suspicious patterns, network communications and obfuscation \
                   techniques that may indicate malicious behavior or security vulnerabilities."
@@ -105,7 +108,7 @@ fn print_banner() {
     println!(
         "{}",
         concat!(
-            "║                           CollapseScanner v",
+            "║                           CollapseFindOBF v",
             env!("CARGO_PKG_VERSION"),
             "                             ║"
         )
@@ -141,27 +144,27 @@ fn create_scanner_options(args: &Args) -> ScannerOptions {
 #[cfg(all(feature = "cli", not(feature = "gui")))]
 fn apply_env_overrides(args: &Args) {
     if let Some(mb) = args.buffer_size_mb {
-        std::env::set_var("COLLAPSE_BUFFER_SIZE_MB", mb.to_string());
+        std::env::set_var("COLLAPSEFINDOBF_BUFFER_SIZE_MB", mb.to_string());
     }
 
     if let Some(size) = args.result_cache_size {
-        std::env::set_var("COLLAPSE_RESULT_CACHE_SIZE", size.to_string());
+        std::env::set_var("COLLAPSEFINDOBF_RESULT_CACHE_SIZE", size.to_string());
     }
 
     if let Some(cap) = args.safe_string_cache_capacity {
-        std::env::set_var("COLLAPSE_STRING_CACHE_CAPACITY", cap.to_string());
+        std::env::set_var("COLLAPSEFINDOBF_STRING_CACHE_CAPACITY", cap.to_string());
     }
 
     if args.parallel_scanning {
-        std::env::set_var("COLLAPSE_PARALLEL_SCANNING", "1");
+        std::env::set_var("COLLAPSEFINDOBF_PARALLEL_SCANNING", "1");
     }
 
     if args.no_parallel_scanning {
-        std::env::set_var("COLLAPSE_PARALLEL_SCANNING", "0");
+        std::env::set_var("COLLAPSEFINDOBF_PARALLEL_SCANNING", "0");
     }
 
     if let Some(mb) = args.available_memory_mb {
-        std::env::set_var("COLLAPSE_AVAILABLE_MEMORY_OVERRIDE_MB", mb.to_string());
+        std::env::set_var("COLLAPSEFINDOBF_AVAILABLE_MEMORY_OVERRIDE_MB", mb.to_string());
     }
 }
 
@@ -173,7 +176,7 @@ fn configure_threading(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         if args.threads > 1024 {
             eprintln!(
                 "{} Warning: Thread count {} is very high. Consider using fewer threads (recommended: 1-64).",
-                "⚠️".yellow(),
+                yellow_text!("⚠️"),
                 args.threads
             );
         }
@@ -181,14 +184,14 @@ fn configure_threading(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         if args.verbose {
             println!(
                 "{} Using {} threads for processing.",
-                "🧵".blue(),
+                blue_text!("🧵"),
                 args.threads
             );
         }
     } else if args.verbose {
         println!(
             "{} Using automatic number of threads (Rayon default) with increased stack size.",
-            "🧵".blue()
+            blue_text!("🧵")
         );
     }
 
@@ -217,17 +220,17 @@ fn validate_and_prepare_path(args: &Args) -> Result<PathBuf, Box<dyn std::error:
 }
 
 #[cfg(all(feature = "cli", not(feature = "gui")))]
-fn print_scan_configuration(path: &Path, args: &Args, scanner: &CollapseScanner) {
+fn print_scan_configuration(path: &Path, args: &Args, scanner: &CollapseFindOBFScanner) {
     println!(
         "\n{} {}",
-        "🎯".green().bold(),
+        green_text!("🎯").bold(),
         "Target:".bright_white().bold()
     );
     println!("   {}", path.display().to_string().bright_white());
 
     println!(
         "\n{} {}",
-        "🔧".yellow().bold(),
+        yellow_text!("🔧").bold(),
         "Detection Mode:".bright_white().bold()
     );
     println!(
@@ -246,11 +249,11 @@ fn print_scan_configuration(path: &Path, args: &Args, scanner: &CollapseScanner)
 }
 
 #[cfg(all(feature = "cli", not(feature = "gui")))]
-fn print_optional_configurations(scanner: &CollapseScanner, args: &Args) {
+fn print_optional_configurations(scanner: &CollapseFindOBFScanner, args: &Args) {
     if !scanner.options.exclude_patterns.is_empty() {
         println!(
             "\n{} {}",
-            "🚫".yellow().bold(),
+            yellow_text!("🚫").bold(),
             "Exclude Patterns:".bright_white().bold()
         );
         for pattern in &scanner.options.exclude_patterns {
@@ -261,7 +264,7 @@ fn print_optional_configurations(scanner: &CollapseScanner, args: &Args) {
     if !scanner.options.find_patterns.is_empty() {
         println!(
             "\n{} {}",
-            "🔍".yellow().bold(),
+            yellow_text!("🔍").bold(),
             "Find Patterns:".bright_white().bold()
         );
         for pattern in &scanner.options.find_patterns {
@@ -272,7 +275,7 @@ fn print_optional_configurations(scanner: &CollapseScanner, args: &Args) {
     if let Some(p) = &scanner.options.ignore_keywords_file {
         println!(
             "\n{} {}",
-            "📄".yellow().bold(),
+            yellow_text!("📄").bold(),
             "Ignore Keywords File:".bright_white().bold()
         );
         println!("   {}", p.display().to_string().dimmed());
@@ -281,7 +284,7 @@ fn print_optional_configurations(scanner: &CollapseScanner, args: &Args) {
     if args.verbose {
         println!(
             "\n{} {}",
-            "🔊".yellow().bold(),
+            yellow_text!("🔊").bold(),
             "Verbose Mode:".bright_white().bold()
         );
         println!("   {}", "Enabled".bright_white());
@@ -369,7 +372,7 @@ fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
     configure_threading(&args)?;
 
-    let scanner = CollapseScanner::new(options.clone())?;
+    let scanner = CollapseFindOBFScanner::new(options.clone())?;
     let path = validate_and_prepare_path(&args)?;
 
     if !args.json {

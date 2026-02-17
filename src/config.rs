@@ -27,7 +27,7 @@ impl SystemConfig {
         let mut sys = System::new_all();
         sys.refresh_all();
 
-        let available_memory = if let Ok(val) = env::var("COLLAPSE_AVAILABLE_MEMORY_OVERRIDE_MB") {
+        let available_memory = if let Ok(val) = env::var("COLLAPSEFINDOBF_AVAILABLE_MEMORY_OVERRIDE_MB") {
             if let Ok(mb) = val.parse::<u64>() {
                 mb * 1024 * 1024
             } else {
@@ -37,13 +37,13 @@ impl SystemConfig {
             sys.total_memory() * 1024
         };
 
-        let buffer_size_mb_override = env::var("COLLAPSE_BUFFER_SIZE_MB")
+        let buffer_size_mb_override = env::var("COLLAPSEFINDOBF_BUFFER_SIZE_MB")
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
-        let result_cache_size_override = env::var("COLLAPSE_RESULT_CACHE_SIZE")
+        let result_cache_size_override = env::var("COLLAPSEFINDOBF_RESULT_CACHE_SIZE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
-        let safe_string_cache_capacity_override = env::var("COLLAPSE_STRING_CACHE_CAPACITY")
+        let safe_string_cache_capacity_override = env::var("COLLAPSEFINDOBF_STRING_CACHE_CAPACITY")
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
 
@@ -81,7 +81,7 @@ impl SystemConfig {
                 }
             };
 
-        let parallel_scanning = match env::var("COLLAPSE_PARALLEL_SCANNING") {
+        let parallel_scanning = match env::var("COLLAPSEFINDOBF_PARALLEL_SCANNING") {
             Ok(v) => matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"),
             Err(_) => available_memory >= LOW_MEMORY_THRESHOLD,
         };
