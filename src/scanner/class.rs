@@ -90,90 +90,177 @@ impl CollapseFindOBFScanner {
         details: &ClassDetails,
         findings: &mut Vec<(FindingType, String)>,
     ) {
-        let mut check = |name: &str, context: &str| {
-            if name.is_empty() || name == "java/lang/Object" {
-                return;
+        let full_name_lower = details.class_name.to_lowercase();
+        
+        // "Умный" иммунитет: для известных библиотек пропускаем только проверку имен на случайность,
+        // но оставляем проверку на вредоносные ключевые слова (на случай заражения библиотеки).
+        let is_library = full_name_lower.starts_with("net/minecraft") 
+            || full_name_lower.starts_with("java/") 
+            || full_name_lower.starts_with("javax/")
+            || full_name_lower.starts_with("com/mojang")
+            || full_name_lower.starts_with("sun/")
+            || full_name_lower.starts_with("com/sun/")
+            || full_name_lower.starts_with("kotlin/")
+            || full_name_lower.starts_with("kotlinx/")
+            || full_name_lower.starts_with("org/apache")
+            || full_name_lower.starts_with("com/google")
+            || full_name_lower.starts_with("org/lwjgl")
+            || full_name_lower.starts_with("io/netty")
+            || full_name_lower.starts_with("io/github")
+            || full_name_lower.starts_with("com/ibm/icu")
+            || full_name_lower.starts_with("org/jctools")
+            || full_name_lower.starts_with("org/openjdk")
+            || full_name_lower.starts_with("oshi/")
+            || full_name_lower.starts_with("com/github/oshi")
+            || full_name_lower.starts_with("com/sun/jna")
+            || full_name_lower.starts_with("joptsimple")
+            || full_name_lower.starts_with("javazoom")
+            || full_name_lower.starts_with("com/gson")
+            || full_name_lower.starts_with("it/unimi/dsi/fastutil")
+            || full_name_lower.starts_with("io/jsonwebtoken")
+            || full_name_lower.starts_with("org/yaml/snakeyaml")
+            || full_name_lower.contains("mixins")
+            || full_name_lower.contains("libraries");
+
+        if !is_library {
+            // Проверяем каждую часть пути на случайность (только для не-библиотек)
+            for part in details.class_name.split('/') {
+                if self.is_random_name(part) {
+                    findings.push((
+                        FindingType::ObfuscationRandomName,
+                        format!("Random name pattern found in path part: '{}'", truncate_string(part, 20)),
+                    ));
+                    break;
+                }
             }
 
-            // Проверка на Unicode символы (не ASCII), исключая кириллицу
-            // Кирилица: U+0400..U+04FF
-            let suspicious_count = name.chars()
-                .filter(|&c| !c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
-                .count();
-            
-            let total_chars = name.chars().count();
-            
-            // Если больше 90% подозрительных символов и их больше 15 — это обфускация
-            if suspicious_count > 15 && suspicious_count * 100 / total_chars > 90 {
-                findings.push((
-                    FindingType::ObfuscationUnicode,
-                    format!(
-                        "{} '{}' ({} suspicious non-ASCII chars)",
-                        context,
-                        truncate_string(name, 30),
-                        suspicious_count
-                    ),
+            if !details.superclass_name.is_empty() 
+                && details.superclass_name != "java/lang/Object"
+            {
+                let super_simple = details.superclass_name.rsplit('/').next().unwrap_or_else(|| &details.superclass_name);
+                if self.is_random_name(super_simple) {
+                    findings.push((
+                        FindingType::ObfuscationRandomName,
+                        format!("Superclass Name '{}' (random naming pattern)", truncate_string(super_simple, 20)),
+                    ));
+                }
+            }
+
+            let mut check = |name: &str, context: &str, findings: &mut Vec<(FindingType, String)>| {
+                if name.is_empty() || name == "java/lang/Object" {
+                    return;
+                }
+
+                // Проверка на Unicode символы (не ASCII), исключая кириллицу
+                // Кирилица: U+0400..U+04FF
+                let suspicious_count = name.chars()
+                    .filter(|&c| !c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
+                    .count();
+                
+                let total_chars = name.chars().count();
+                
+                // Порог для Unicode обфускации: должен быть экстремальным (почти 100% мусора)
+                if total_chars > 5 && (suspicious_count > 10 && suspicious_count * 100 / total_chars > 95) {
+                    findings.push((
+                        FindingType::ObfuscationUnicode,
+                        format!(
+                            "{} '{}' (extreme unicode junk)",
+                            context,
+                            truncate_string(name, 30)
+                        ),
+                    ));
+                }
+
+                // Классы и суперклассы проверяем на случайные имена (только если это реально каша)
+                if (context == "Class Name" || context == "Superclass Name") && self.is_random_name(name) {
+                    findings.push((
+                        FindingType::ObfuscationRandomName,
+                        format!("{} '{}' (fully random name)", context, truncate_string(name, 30)),
+                    ));
+                }
+            };
+
+            for interface in details.interfaces.iter().take(5) {
+                check(interface, "Interface Name", findings);
+            }
+        }
+
+        for keyword in crate::detection::SUSSY_KEYWORDS.iter() {
+            // Ищем ключевое слово как отдельную часть пути
+            let parts: Vec<&str> = full_name_lower.split('/').collect();
+            if parts.iter().any(|&p| p == *keyword) {
+                 findings.push((
+                    FindingType::ObfuscationString,
+                    format!("Highly suspicious keyword '{}' found in package path", keyword),
                 ));
+                break;
             }
-
-            // Проверка на случайные имена (a, b, c, aa, ab, abc и т.д.)
-            // ВАЖНО: Проверяем только для классов и суперклассов, чтобы избежать ложных срабатываний на полях/методах
-            if (context == "Class Name" || context == "Superclass Name") && self.is_random_name(name) {
-                findings.push((
-                    FindingType::ObfuscationRandomName,
-                    format!("{} '{}' (random naming pattern)", context, truncate_string(name, 30)),
-                ));
-            }
-        };
-
-        check(&details.class_name, "Class Name");
-        if !details.superclass_name.is_empty() 
-            && details.superclass_name != "java/lang/Object"
-        {
-            check(&details.superclass_name, "Superclass Name");
-        }
-
-        for interface in details.interfaces.iter().take(5) {
-            check(interface, "Interface Name");
-        }
-
-        // Проверяем выборку полей (не все, чтобы не замедлять)
-        let fields_to_check = details.fields.len().min(20);
-        for f in details.fields.iter().take(fields_to_check) {
-            check(&f.name, "Field Name");
-        }
-
-        // Проверяем выборку методов (исключая конструкторы)
-        let methods_to_check = details.methods.len().min(30);
-        for m in details
-            .methods
-            .iter()
-            .filter(|m| m.name != "<init>" && m.name != "<clinit>")
-            .take(methods_to_check)
-        {
-            check(&m.name, "Method Name");
         }
     }
 
     /// Проверка имени на случайный паттерн
-    fn is_random_name(&self, name: &str) -> bool {
-        // Убираем package path
-        let simple_name = name.rsplit('/').next().unwrap_or(name);
-        
-        if simple_name.is_empty() || simple_name.len() > 10 {
+    fn is_random_name(&self, simple_name: &str) -> bool {
+        let len = simple_name.len();
+        if len == 0 { return false; }
+
+        // Детект длинных повторяющихся символов или малой вариативности (типа |||| или lIlIl)
+        if len >= 5 {
+            let mut char_counts: HashMap<char, usize> = HashMap::new();
+            for c in simple_name.chars() {
+                *char_counts.entry(c).or_insert(0) += 1;
+            }
+            
+            // Если один символ занимает более 70%
+            for (&_c, &count) in char_counts.iter() {
+                if count * 100 / len > 70 {
+                    return true;
+                }
+            }
+
+            // Малое количество уникальных символов для длинного имени
+            if char_counts.len() <= 3 && len >= 10 {
+                return true;
+            }
+        }
+
+        // Детект имён типа _0, _u, _1
+        if simple_name.starts_with('_') && len <= 3 {
+            return true;
+        }
+
+        // Короткие имена (одна-две буквы) почти всегда результат обфускации в Java классах
+        // Игнорируем чисто числовые имена (анонимные классы типа $1, $2)
+        if len <= 2 && simple_name.chars().all(|c| c.is_alphabetic()) {
+            return true;
+        }
+
+        // Если имя содержит $ и заканчивается на цифры - это сгенерированный класс
+        if simple_name.contains('$') {
             return false;
         }
 
-        // Паттерн: только буквы (a-z, A-Z), возможно с цифрами в конце
-        // Короткие имена типа a, b, c, aa, ab, abc, aaaa
-        if simple_name.len() <= 2 {
-            let all_letters = simple_name.chars().all(|c| c.is_ascii_alphabetic());
-            let has_lowercase = simple_name.chars().any(|c| c.is_ascii_lowercase());
+        // Длинные имена
+        if len >= 10 {
+            let mut uppercase = 0;
+            let mut lowercase = 0;
+            let mut digits = 0;
+            let mut vowels = 0;
             
-            // Если всё lowercase и длина 1-2 — подозрительно
-            if has_lowercase && all_letters && simple_name.len() <= 2 {
+            for c in simple_name.chars() {
+                if c.is_ascii_uppercase() { uppercase += 1; }
+                else if c.is_ascii_lowercase() { lowercase += 1; }
+                else if c.is_ascii_digit() { digits += 1; }
+                
+                if "aeiouyAEIOUY".contains(c) { vowels += 1; }
+            }
+
+            // Если это длинная каша из букв разного регистра без гласных
+            if len >= 12 && (uppercase > 4 && lowercase > 4) && (vowels as f32 / len as f32) < 0.15 {
                 return true;
             }
+            
+            // Много цифр
+            if len < 20 && digits > len / 2 { return true; }
         }
 
         false
@@ -211,29 +298,25 @@ impl CollapseFindOBFScanner {
 
     // fn check_discord_webhook(&self, string: &str, findings: &mut Vec<(FindingType, String)>) { ... } // Removed
 
-    /// Проверка строки на обфускацию
+    /// Проверка строки на обфускацию (поиск зашифрованных данных)
     fn check_obfuscated_string(&self, string: &str, findings: &mut Vec<(FindingType, String)>) {
-        // Пропускаем короткие строки
-        if string.len() < 15 {
+        let total_chars = string.chars().count();
+        if total_chars < 40 { // Поднял порог длины, чтобы не ловить сигнатуры/хеши
             return;
         }
 
-        // Проверка на подозрительные символы (не ASCII, исключая кириллицу)
-        let suspicious_count = string.chars()
-            .filter(|&c| !c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
-            .count();
-        let total_chars = string.chars().count();
+        // Подсчитываем "мусорные" символы
+        let junk_count = string.chars().filter(|&c| {
+            (c.is_ascii() && c.is_ascii_control() && c != '\n' && c != '\r' && c != '\t') ||
+            (!c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
+        }).count();
 
-        if total_chars > 0 && suspicious_count > 20 
-            && (suspicious_count * 100 / total_chars) > 70 
-        {
+        // Чтобы считаться зашифрованной строкой, мусора должно быть ОЧЕНЬ много
+        // И абсолютное количество мусора должно быть высоким (>30 символов)
+        if junk_count > 30 && (junk_count * 100 / total_chars > 85) {
             findings.push((
                 FindingType::ObfuscationString,
-                format!(
-                    "Obfuscated string: {} ({} suspicious non-ASCII chars)",
-                    truncate_string(string, 50),
-                    suspicious_count
-                ),
+                format!("High-density encrypted string ({}% junk)", (junk_count * 100 / total_chars)),
             ));
         }
     }
@@ -243,13 +326,14 @@ impl CollapseFindOBFScanner {
             .strings
             .iter()
             .filter(|s| {
+                let len = s.len();
                 !s.is_empty() && 
-                s.len() >= 15 &&  // Увеличил минимальную длину с 3 до 15
+                len >= 6 && 
                 !is_cached_safe_string(s) &&
-                // Добавил дополнительную проверку: пропускаем строки, которые выглядят как обычные имена или слова
-                !s.chars().all(|c| c.is_ascii_alphabetic() || c == '_' || c == '.') // Пропускаем простые имена классов/методов
+                // Не пропускаем, если строка длинная и без пробелов (может быть Base64)
+                (len < 30 || s.contains(' ') || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='))
             })
-            .take(200)
+            .take(500)
             .collect()
     }
 
