@@ -39,7 +39,11 @@ impl Default for ScanSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Serialize, Deserialize};
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemeMode {
     Dark,
     Light,
@@ -64,11 +68,32 @@ impl std::fmt::Display for ThemeMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceSettings {
     pub theme: ThemeMode,
     pub language: Language,
+    #[serde(with = "color_serde")]
     pub accent_color: Color,
+}
+
+mod color_serde {
+    use iced::Color;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(color: &Color, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (color.r, color.g, color.b, color.a).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Color, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (r, g, b, a) = <(f32, f32, f32, f32)>::deserialize(deserializer)?;
+        Ok(Color { r, g, b, a })
+    }
 }
 
 impl Default for AppearanceSettings {
@@ -77,6 +102,33 @@ impl Default for AppearanceSettings {
             theme: ThemeMode::Dark,
             language: Language::English,
             accent_color: Color::from_rgb(0.0, 0.48, 1.0), // Default Blue
+        }
+    }
+}
+
+impl AppearanceSettings {
+    pub fn config_path() -> PathBuf {
+        let mut path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+        path.set_file_name("gui_settings.json");
+        path
+    }
+
+    pub fn load() -> Self {
+        let path = Self::config_path();
+        if path.exists() {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(settings) = serde_json::from_str::<Self>(&content) {
+                    return settings;
+                }
+            }
+        }
+        Self::default()
+    }
+
+    pub fn save(&self) {
+        let path = Self::config_path();
+        if let Ok(content) = serde_json::to_string_pretty(self) {
+            let _ = fs::write(path, content);
         }
     }
 }

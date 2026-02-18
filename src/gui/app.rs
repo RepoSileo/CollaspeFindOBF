@@ -48,7 +48,7 @@ impl CollapseFindOBFApp {
                 active_tab: 0,
                 expanded_findings: Vec::new(),
                 results_ui: ResultsUi::default(),
-                appearance: AppearanceSettings::default(),
+                appearance: AppearanceSettings::load(),
             },
             Task::none(),
         )
@@ -237,14 +237,17 @@ impl CollapseFindOBFApp {
             }
             Message::LanguageChanged(lang) => {
                 self.appearance.language = lang;
+                self.appearance.save();
                 Task::none()
             }
             Message::ThemeChanged(mode) => {
                 self.appearance.theme = mode;
+                self.appearance.save();
                 Task::none()
             }
             Message::AccentColorChanged(color) => {
                 self.appearance.accent_color = color;
+                self.appearance.save();
                 Task::none()
             }
         }
@@ -295,7 +298,7 @@ impl CollapseFindOBFApp {
                     self.active_tab,
                 ),
                 vertical_space().height(Length::Fill),
-                text(format!("v{} Global", env!("CARGO_PKG_VERSION")))
+                text(format!("v{} Beta", env!("CARGO_PKG_VERSION")))
                     .size(12)
                     .style(|_theme: &Theme| text::Style {
                          color: Some(Color::from_rgb(0.4, 0.4, 0.4)),
