@@ -113,6 +113,15 @@ impl Translator {
         en.insert("total_findings", "Total findings: {}");
         ru.insert("total_findings", "Всего находок: {}");
         
+        en.insert("overall_verdict_label", "Overall Verdict:");
+        ru.insert("overall_verdict_label", "Общий вердикт:");
+        
+        en.insert("overall_verdict_positive", "Obfuscation Likely Found (Note: Not 100% certain, may contain false positives)");
+        ru.insert("overall_verdict_positive", "Обфускация вероятно найдена (Примечание: не 100% вердикт, возможны ложные срабатывания)");
+
+        en.insert("overall_verdict_negative", "No significant obfuscation detected");
+        ru.insert("overall_verdict_negative", "Значительная обфускация не обнаружена");
+        
         en.insert("risk_label", "Risk: {}/10");
         ru.insert("risk_label", "Риск: {}/10");
         

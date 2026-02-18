@@ -605,6 +605,26 @@ impl CollapseFindOBFApp {
                     &findings_by_type.values().map(|v| v.len()).sum::<usize>().to_string()
                 ))
                 .size(13),
+                vertical_space().height(4),
+                row![
+                    text(TRANSLATOR.get(self.appearance.language, "overall_verdict_label"))
+                        .size(13)
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(theme.palette().primary),
+                        }),
+                    horizontal_space().width(Length::Fixed(8.0)),
+                    text(if filtered_results.iter().filter(|r| r.danger_score >= 5).count() > 100 
+                            || filtered_results.iter().any(|r| r.danger_score >= 8) {
+                        TRANSLATOR.get(self.appearance.language, "overall_verdict_positive")
+                    } else {
+                        TRANSLATOR.get(self.appearance.language, "overall_verdict_negative")
+                    })
+                    .size(13)
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().text),
+                    }),
+                ]
+                .align_y(Alignment::Center),
             ]
             .spacing(6)
             .padding(16),
