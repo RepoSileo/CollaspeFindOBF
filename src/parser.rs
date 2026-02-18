@@ -1,10 +1,20 @@
 use crate::errors::ScanError;
 use crate::types::{ClassDetails, ConstantPoolEntry, FieldInfo, MethodInfo};
 use byteorder::{BigEndian, ReadBytesExt};
+#[cfg(feature = "cli")]
 use colored::Colorize;
 use encoding_rs::UTF_8;
 use std::collections::HashSet;
 use std::io::{Cursor, Seek, SeekFrom};
+
+macro_rules! warn_prefix {
+    () => {{
+        #[cfg(feature = "cli")]
+        { "⚠️".yellow() }
+        #[cfg(not(feature = "cli"))]
+        { "⚠️" }
+    }};
+}
 
 #[inline]
 fn check_bounds(
@@ -191,7 +201,7 @@ fn parse_constant_pool(
     if constant_pool.len() != capacity {
         eprintln!(
             "{} Warning: Constant pool size mismatch for '{}'. Parsed {} entries, expected capacity {}. File might be corrupt or parser logic error.",
-            "⚠️".yellow(),
+            warn_prefix!(),
             file_path_str,
             constant_pool.len(),
             capacity
@@ -377,7 +387,7 @@ pub fn parse_class_structure(
         let field_name = resolve_utf8(&constant_pool, name_index, &format!("field {} name", f_idx))
             .unwrap_or_else(|e| {
                 if verbose {
-                    eprintln!("{} Field name resolution error: {}", "⚠️".yellow(), e);
+                    eprintln!("{} Field name resolution error: {}", warn_prefix!(), e);
                 }
                 format!("<INVALID_FIELD_NAME_INDEX_{}>", name_index)
             });
@@ -388,7 +398,7 @@ pub fn parse_class_structure(
         )
         .unwrap_or_else(|e| {
             if verbose {
-                eprintln!("{} Field descriptor resolution error: {}", "⚠️".yellow(), e);
+                eprintln!("{} Field descriptor resolution error: {}", warn_prefix!(), e);
             }
             format!("<INVALID_DESCRIPTOR_INDEX_{}>", descriptor_index)
         });
@@ -429,7 +439,7 @@ pub fn parse_class_structure(
         )
         .unwrap_or_else(|e| {
             if verbose {
-                eprintln!("{} Method name resolution error: {}", "⚠️".yellow(), e);
+                eprintln!("{} Method name resolution error: {}", warn_prefix!(), e);
             }
             format!("<INVALID_METHOD_NAME_INDEX_{}>", name_index)
         });
@@ -442,7 +452,7 @@ pub fn parse_class_structure(
             if verbose {
                 eprintln!(
                     "{} Method descriptor resolution error: {}",
-                    "⚠️".yellow(),
+                    warn_prefix!(),
                     e
                 );
             }
@@ -475,7 +485,7 @@ pub fn parse_class_structure(
                         if verbose {
                             eprintln!(
                                 "{} String constant data resolution error: {}",
-                                "⚠️".yellow(),
+                                warn_prefix!(),
                                 e
                             );
                         }

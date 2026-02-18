@@ -1,6 +1,3 @@
-// This file defines macros for colored text output.
-// It handles the conditional compilation based on the "cli" feature.
-
 #[cfg(feature = "cli")]
 #[macro_export]
 macro_rules! yellow_text {

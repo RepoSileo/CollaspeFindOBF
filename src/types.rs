@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-// custom serde helper to (de)serialize Arc<Vec<(FindingType,String)>>
+
 mod arc_matches_serde {
     use super::FindingType;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};

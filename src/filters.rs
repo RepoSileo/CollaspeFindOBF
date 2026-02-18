@@ -4,21 +4,16 @@ use std::collections::HashSet;
 use std::net::IpAddr;
 
 lazy_static::lazy_static! {
-    /// IPv4 address regex
     pub static ref IP_REGEX: Regex = Regex::new(r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b").unwrap();
 
-    /// IPv6 address regex (simple/fast heuristic)
     pub static ref IPV6_REGEX: Regex = Regex::new(r"(?i)\b(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{1,4}\b").unwrap();
 
-    /// URL detection regex (captures many common URL forms)
     pub static ref URL_REGEX: Regex = Regex::new(r#"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^
 \s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^
 \s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»""']))"#).unwrap();
 
-    /// Generic malicious / suspicious pattern keywords
     pub static ref MALICIOUS_PATTERN_REGEX: Regex = Regex::new(r"(?i)\b(powershell|cmd\.exe|Runtime\.getRuntime\(\)\.exec|ProcessBuilder|loadLibrary|socket\(|bind\(|connect\(|URL\(|URLConnection|Class\.forName|defineClass|getMethod|ldap|rmi)\b").unwrap();
 
-    /// Known "good" links / domains
     pub static ref GOOD_LINKS: Vec<String> = vec![
         "account.mojang.com".to_string(),
         "aka.ms".to_string(),
@@ -62,42 +57,25 @@ lazy_static::lazy_static! {
         "slf4j.org".to_string(),
     ];
 
-    /// Known "good" / unreachable / reserved IPs and ranges
     pub static ref GOOD_IPS: HashSet<&'static str> = {
         let mut s = HashSet::new();
-        // Unspecified / non-routable single addresses
         s.insert("0.0.0.0");
         s.insert("::");
-
-        // Loopback
         s.insert("127.0.0.1");
         s.insert("::1");
-
-        // Broadcast
         s.insert("255.255.255.255");
-
-        // Link-local (often unreachable from other networks)
         s.insert("169.254.0.0/16");
-
-        // Documentation / TEST-NET ranges (RFC 5737) - used in examples/tests
         s.insert("192.0.2.0/24");
         s.insert("198.51.100.0/24");
         s.insert("203.0.113.0/24");
-
-        // Private address ranges (commonly non-public)
         s.insert("10.0.0.0/8");
         s.insert("172.16.0.0/12");
         s.insert("192.168.0.0/16");
-
-        // Minecraft UDP multicast address
         s.insert("224.0.2.60");
-
-        // DNS resolvers
         s.insert("8.8.8.8");
         s.insert("8.8.4.4");
         s.insert("1.1.1.1");
         s.insert("9.9.9.9");
-
         s
     };
 
