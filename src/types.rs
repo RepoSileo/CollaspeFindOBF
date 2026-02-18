@@ -98,18 +98,18 @@ impl FindingType {
     pub fn base_score(&self) -> u8 {
         match self {
             FindingType::DiscordWebhook => 10,
-            FindingType::ObfuscationUnicode => 4,  // Увеличил с 2 до 4
-            FindingType::ObfuscationRandomName => 5,  // Увеличил с 3 до 5
-            FindingType::ObfuscationString => 4,  // Увеличил с 2 до 4
+            FindingType::ObfuscationUnicode => 1,
+            FindingType::ObfuscationRandomName => 2,
+            FindingType::ObfuscationString => 1,
         }
     }
 
     pub fn max_contribution(&self) -> u8 {
         match self {
             FindingType::DiscordWebhook => 10,
-            FindingType::ObfuscationUnicode => 12,  // Увеличил с 6 до 12
-            FindingType::ObfuscationRandomName => 15,  // Увеличил с 6 до 15
-            FindingType::ObfuscationString => 8,  // Увеличил с 4 до 8
+            FindingType::ObfuscationUnicode => 4,
+            FindingType::ObfuscationRandomName => 5,
+            FindingType::ObfuscationString => 3,
         }
     }
 }

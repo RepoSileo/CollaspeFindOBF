@@ -22,6 +22,23 @@ lazy_static::lazy_static! {
             "pastebin.com",
             "bit.ly",
             "tinyurl.com",
+            "glitch.me",
+            "replit.co",
+        ]
+        .iter()
+        .map(|&s| s.to_lowercase())
+        .collect()
+    };
+
+    pub static ref SUSSY_KEYWORDS: HashSet<String> = {
+        [
+            "bober",
+            "rat",
+            "stealer",
+            "grabber",
+            "injector",
+            "obfuscated",
+            "protected",
         ]
         .iter()
         .map(|&s| s.to_lowercase())
