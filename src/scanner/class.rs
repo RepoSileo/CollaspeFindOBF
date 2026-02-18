@@ -146,7 +146,7 @@ impl CollapseFindOBFScanner {
                 }
             }
 
-            let mut check = |name: &str, context: &str, findings: &mut Vec<(FindingType, String)>| {
+            let check = |name: &str, context: &str, findings: &mut Vec<(FindingType, String)>| {
                 if name.is_empty() || name == "java/lang/Object" {
                     return;
                 }
