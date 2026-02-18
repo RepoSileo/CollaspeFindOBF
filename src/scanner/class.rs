@@ -99,6 +99,9 @@ impl CollapseFindOBFScanner {
             || full_name_lower.starts_with("org/lwjgl")
             || full_name_lower.starts_with("io/netty")
             || full_name_lower.starts_with("io/github")
+            || full_name_lower.starts_with("com/github")
+            || full_name_lower.starts_with("org/slf4j")
+            || full_name_lower.starts_with("org/fusesource")
             || full_name_lower.starts_with("com/ibm/icu")
             || full_name_lower.starts_with("org/jctools")
             || full_name_lower.starts_with("org/openjdk")
@@ -125,6 +128,7 @@ impl CollapseFindOBFScanner {
                 "com", "org", "net", "io", "me", "cc", "co", "eu", "tv", "gg",
                 "dev", "app", "pro", "biz", "edu", "gov", "mil", "int",
                 "api", "lib", "sdk", "gui", "cmd", "cli", "db", "fx", "ui",
+                "gl", "vk", "os", "id", "no", "cl", "dx", "qr", "win", "mac", "lx",
             ];
 
             for part in details.class_name.split('/') {
@@ -134,10 +138,34 @@ impl CollapseFindOBFScanner {
                 if self.is_random_name(part) {
                     findings.push((
                         FindingType::ObfuscationRandomName,
-                        format!("Random name pattern found in path part: '{}'", truncate_string(part, 20)),
+                        format!("Obfuscated name pattern: '{}'", truncate_string(part, 20)),
                     ));
                     break;
                 }
+            }
+
+            let mut short_names_count = 0;
+            for method in &details.methods {
+                if method.name.len() <= 2 && !method.name.starts_with('<') {
+                   short_names_count += 1;
+                }
+            }
+            for field in &details.fields {
+                if field.name.len() <= 2 {
+                    short_names_count += 1;
+                }
+            }
+
+            if short_names_count >= 10 {
+                findings.push((
+                    FindingType::ObfuscationRandomName,
+                    format!("Massive member obfuscation: {} short names", short_names_count),
+                ));
+            } else if short_names_count >= 3 && details.class_name.len() <= 2 {
+                 findings.push((
+                    FindingType::ObfuscationRandomName,
+                    format!("Class and members use obfuscated naming pattern"),
+                ));
             }
 
             if !details.superclass_name.is_empty() 
@@ -224,7 +252,7 @@ impl CollapseFindOBFScanner {
             return true;
         }
 
-        if len <= 2 && simple_name.chars().all(|c| c.is_alphabetic()) {
+        if len <= 2 && simple_name.chars().all(|c| c.is_ascii_alphanumeric()) {
             return true;
         }
 
@@ -355,34 +383,21 @@ impl CollapseFindOBFScanner {
         findings: &[(FindingType, String)],
         _resource_info: Option<&ResourceInfo>,
     ) -> Vec<String> {
-        if findings.is_empty() {
-            return vec!["No suspicious elements detected.".to_string()];
-        }
-
         let mut explanations = Vec::new();
-        let use_emoji = self.options.progress.is_none();
-        let warn_prefix = if use_emoji { "⚠️ " } else { "" };
+        
+        let verdict = match score {
+            10 => "STATUS: [!] OBFUSCATION + MALWARE FOUND",
+            8..=9 => "STATUS: [!] OBFUSCATION DETECTED (100%)",
+            5..=7 => "STATUS: [!] OBFUSCATION DETECTED (HIGH)",
+            3..=4 => "STATUS: [?] OBFUSCATION FOUND (50/50)",
+            2 => "STATUS: [~] LIKELY NO OBFUSCATION",
+            _ => "STATUS: [v] NO OBFUSCATION FOUND",
+        };
 
-        if score >= 8 {
-            explanations.push(format!(
-                "{}HIGH RISK: This file contains multiple high-risk indicators!",
-                warn_prefix
-            ));
-        } else if score >= 5 {
-            explanations.push(format!(
-                "{}MODERATE RISK: This file contains several suspicious elements.",
-                warn_prefix
-            ));
-        } else if score >= 3 {
-            explanations.push(format!(
-                "{}LOW RISK: This file contains some potentially concerning elements.",
-                warn_prefix
-            ));
-        } else {
-            explanations.push(format!(
-                "{}MINIMAL RISK: Few or no concerning elements detected.",
-                "✅ "
-            ));
+        explanations.push(verdict.to_string());
+
+        if findings.is_empty() {
+            return explanations;
         }
 
         let mut by_type: HashMap<FindingType, Vec<String>> = HashMap::new();
@@ -395,37 +410,25 @@ impl CollapseFindOBFScanner {
 
         if let Some(webhooks) = by_type.get(&FindingType::DiscordWebhook) {
             if !webhooks.is_empty() {
-                explanations.push(format!(
-                    "CRITICAL: Found {} Discord webhook(s)! These are extremely dangerous and commonly used for data exfiltration.",
-                    webhooks.len()
-                ));
+                explanations.push(format!("CRITICAL: Found {} Discord webhook(s)!", webhooks.len()));
             }
         }
 
         if let Some(unicode) = by_type.get(&FindingType::ObfuscationUnicode) {
             if !unicode.is_empty() {
-                explanations.push(format!(
-                    "Found {} obfuscated name(s) with Unicode characters.",
-                    unicode.len()
-                ));
+                explanations.push(format!("Detected {} unicode obfuscated names.", unicode.len()));
             }
         }
 
         if let Some(random) = by_type.get(&FindingType::ObfuscationRandomName) {
             if !random.is_empty() {
-                explanations.push(format!(
-                    "Found {} obfuscated name(s) with random naming pattern (a, b, c, ...).",
-                    random.len()
-                ));
+                explanations.push(format!("Detected {} random/obfuscated names.", random.len()));
             }
         }
 
         if let Some(obf_strings) = by_type.get(&FindingType::ObfuscationString) {
             if !obf_strings.is_empty() {
-                explanations.push(format!(
-                    "Found {} obfuscated string(s) with non-ASCII characters.",
-                    obf_strings.len()
-                ));
+                explanations.push(format!("Detected {} obfuscated strings.", obf_strings.len()));
             }
         }
 
@@ -442,6 +445,11 @@ impl CollapseFindOBFScanner {
 
         if !cached_findings.is_empty() || self.options.verbose {
             let danger_score = self.calculate_danger_score(cached_findings, resource_info.as_ref());
+            
+            if !self.options.verbose && danger_score < 4 {
+                return Ok(None);
+            }
+
             let danger_explanation = self.generate_danger_explanation(
                 danger_score,
                 cached_findings,
@@ -478,6 +486,11 @@ impl CollapseFindOBFScanner {
 
         if !findings.is_empty() || self.options.verbose {
             let danger_score = self.calculate_danger_score(findings, resource_info.as_ref());
+            
+            if !self.options.verbose && danger_score < 4 {
+                return Ok(None);
+            }
+
             let danger_explanation =
                 self.generate_danger_explanation(danger_score, findings, resource_info.as_ref());
 
@@ -509,6 +522,11 @@ impl CollapseFindOBFScanner {
     ) -> Result<Option<ScanResult>, ScanError> {
         if !findings.is_empty() || self.options.verbose {
             let danger_score = self.calculate_danger_score(&findings, resource_info.as_ref());
+            
+            if !self.options.verbose && danger_score < 4 {
+                return Ok(None);
+            }
+
             let danger_explanation =
                 self.generate_danger_explanation(danger_score, &findings, resource_info.as_ref());
 
