@@ -35,7 +35,6 @@ impl Translator {
         let mut en = HashMap::new();
         let mut ru = HashMap::new();
 
-        // General
         en.insert("app_title", "CollapseFindOBF");
         ru.insert("app_title", "CollapseFindOBF");
         
@@ -48,7 +47,6 @@ impl Translator {
         en.insert("sidebar_settings", "Settings");
         ru.insert("sidebar_settings", "Настройки");
 
-        // Scanner Tab
         en.insert("scan_title", "CollapseFindOBF");
         ru.insert("scan_title", "CollapseFindOBF");
 
@@ -88,7 +86,6 @@ impl Translator {
         en.insert("scan_error", "Error: {}");
         ru.insert("scan_error", "Ошибка: {}");
 
-        // Results Tab
         en.insert("results_title", "Scan Results");
         ru.insert("results_title", "Результаты сканирования");
         
@@ -125,7 +122,6 @@ impl Translator {
         en.insert("detailed_findings_label", "Findings:");
         ru.insert("detailed_findings_label", "Детали:");
 
-        // Settings Tab
         en.insert("settings_title", "Advanced Settings");
         ru.insert("settings_title", "Расширенные настройки");
         
@@ -167,7 +163,6 @@ impl Translator {
         map.get(key).unwrap_or(&key).to_string()
     }
     
-    // Helper for formatted strings
     pub fn get_fmt(&self, lang: Language, key: &str, arg: &str) -> String {
         let text = self.get(lang, key);
         text.replace("{}", arg)

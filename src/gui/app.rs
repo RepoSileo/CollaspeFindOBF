@@ -269,7 +269,6 @@ impl CollapseFindOBFApp {
             _ => self.view_scan_tab(),
         };
 
-        // Sidebar
         let sidebar = container(
             column![
                 text("Collapse").size(24).style(|theme: &Theme| text::Style {
@@ -311,12 +310,11 @@ impl CollapseFindOBFApp {
         .height(Length::Fill)
         .style(theme::sidebar_container_style);
 
-        // Main Content Area
         let main_content = container(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(20)
-            .style(theme::container_style); // Or transparent if background is handled by window
+            .style(theme::container_style);
 
         row![sidebar, main_content]
             .width(Length::Fill)
@@ -341,7 +339,7 @@ impl CollapseFindOBFApp {
         let subtitle = text(TRANSLATOR.get(self.appearance.language, "scan_subtitle"))
             .size(16)
             .style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().text), // Or secondary
+                color: Some(theme.palette().text),
             });
 
         let path_row = row![
@@ -741,7 +739,6 @@ impl CollapseFindOBFApp {
                 color: Some(theme.palette().text),
             });
 
-        // Appearance Section
         let appearance_title = text(TRANSLATOR.get(self.appearance.language, "appearance_label"))
             .size(20)
             .style(|theme: &Theme| text::Style {
@@ -776,23 +773,22 @@ impl CollapseFindOBFApp {
         .spacing(12)
         .align_y(Alignment::Center);
 
-        // Expanded color palette
         let color_grid = vec![
-            Color::from_rgb(0.0, 0.48, 1.0),   // Blue
-            Color::from_rgb(0.0, 0.75, 1.0),   // Sky
-            Color::from_rgb(0.3, 0.0, 0.6),   // Indigo
-            Color::from_rgb(0.5, 0.0, 0.5),   // Purple
-            Color::from_rgb(1.0, 0.2, 0.6),   // Pink
-            Color::from_rgb(0.8, 0.2, 0.2),   // Red
-            Color::from_rgb(1.0, 0.4, 0.0),   // Orange
-            Color::from_rgb(1.0, 0.8, 0.0),   // Yellow
-            Color::from_rgb(0.2, 0.8, 0.2),   // Green
-            Color::from_rgb(0.0, 0.6, 0.2),   // Dark Green
-            Color::from_rgb(0.0, 0.8, 0.6),   // Teal
-            Color::from_rgb(0.6, 0.3, 0.0),   // Brown
-            Color::from_rgb(0.4, 0.4, 0.4),   // Gray
-            Color::from_rgb(1.0, 1.0, 1.0),   // White
-            Color::from_rgb(0.0, 0.0, 0.0),   // Black
+            Color::from_rgb(0.0, 0.48, 1.0),
+            Color::from_rgb(0.0, 0.75, 1.0),
+            Color::from_rgb(0.3, 0.0, 0.6),
+            Color::from_rgb(0.5, 0.0, 0.5),
+            Color::from_rgb(1.0, 0.2, 0.6),
+            Color::from_rgb(0.8, 0.2, 0.2),
+            Color::from_rgb(1.0, 0.4, 0.0),
+            Color::from_rgb(1.0, 0.8, 0.0),
+            Color::from_rgb(0.2, 0.8, 0.2),
+            Color::from_rgb(0.0, 0.6, 0.2),
+            Color::from_rgb(0.0, 0.8, 0.6),
+            Color::from_rgb(0.6, 0.3, 0.0),
+            Color::from_rgb(0.4, 0.4, 0.4),
+            Color::from_rgb(1.0, 1.0, 1.0),
+            Color::from_rgb(0.0, 0.0, 0.0),
         ];
 
         let accent_row = column![
@@ -945,7 +941,7 @@ impl CollapseFindOBFApp {
         let path = PathBuf::from(&settings.path);
 
         let threads: usize = settings.threads.parse().unwrap_or(0);
-        let mut builder = rayon::ThreadPoolBuilder::new().stack_size(8 * 1024 * 1024); // 8MB stack size
+        let mut builder = rayon::ThreadPoolBuilder::new().stack_size(8 * 1024 * 1024);
 
         if threads > 0 {
             builder = builder.num_threads(threads);

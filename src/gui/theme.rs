@@ -4,8 +4,6 @@ use iced::theme::Palette;
 
 use crate::gui::state::ThemeMode;
 
-// --- Palette Generation ---
-
 pub fn get_palette(mode: ThemeMode, accent: Color) -> Palette {
     match mode {
         ThemeMode::Dark => Palette {
@@ -25,16 +23,12 @@ pub fn get_palette(mode: ThemeMode, accent: Color) -> Palette {
     }
 }
 
-// --- Constants (Fallback/Fixed) ---
-
 pub const WARNING_COLOR: Color = Color::from_rgb(1.0, 0.80, 0.0);
 pub const BORDER_COLOR_DARK: Color = Color::from_rgb(0.25, 0.25, 0.25);
 pub const BORDER_COLOR_LIGHT: Color = Color::from_rgb(0.85, 0.85, 0.85);
 
-// --- Helpers ---
-
 fn is_dark(theme: &Theme) -> bool {
-    matches!(theme.palette().text, Color::WHITE) // Simple heuristic
+    matches!(theme.palette().text, Color::WHITE)
 }
 
 pub fn border_color(theme: &Theme) -> Color {
@@ -50,7 +44,7 @@ pub fn surface_color(theme: &Theme) -> Color {
     if is_dark(theme) {
         Color::from_rgb(base.r + 0.05, base.g + 0.05, base.b + 0.05)
     } else {
-        Color::from_rgb(base.r - 0.03, base.g - 0.03, base.b - 0.03) // Slightly darker for light mode surface
+        Color::from_rgb(base.r - 0.03, base.g - 0.03, base.b - 0.03)
     }
 }
 
@@ -59,7 +53,7 @@ pub fn sidebar_bg(theme: &Theme) -> Color {
     if is_dark(theme) {
          Color::from_rgb(base.r - 0.01, base.g - 0.01, base.b - 0.01)
     } else {
-         Color::from_rgb(0.96, 0.96, 0.96) // Light gray for sidebar
+         Color::from_rgb(0.96, 0.96, 0.96)
     }
 }
 
@@ -80,8 +74,6 @@ pub fn danger_color(score: u8) -> Color {
     }
 }
 
-
-// --- Styles ---
 
 pub fn container_style(theme: &Theme) -> container::Style {
     container::Style {
@@ -152,8 +144,8 @@ pub fn button_style(theme: &Theme, status: button::Status) -> button::Style {
 pub fn primary_button_style(theme: &Theme, status: button::Status) -> button::Style {
     let base = theme.palette().primary;
     let bg_color = match status {
-        button::Status::Hovered => Color::from_rgb(base.r * 1.1, base.g * 1.1, base.b * 1.1), // Naive lighten
-        button::Status::Pressed => Color::from_rgb(base.r * 0.9, base.g * 0.9, base.b * 0.9), // Naive darken
+        button::Status::Hovered => Color::from_rgb(base.r * 1.1, base.g * 1.1, base.b * 1.1),
+        button::Status::Pressed => Color::from_rgb(base.r * 0.9, base.g * 0.9, base.b * 0.9),
         _ => base,
     };
 
@@ -201,7 +193,7 @@ pub fn result_button_style(theme: &Theme, status: button::Status) -> button::Sty
      let bg_color = match status {
         button::Status::Hovered => if is_dark(theme) { Color::from_rgb(0.20, 0.20, 0.20) } else { Color::from_rgb(0.95, 0.95, 0.95) },
         button::Status::Pressed => if is_dark(theme) { Color::from_rgb(0.18, 0.18, 0.18) } else { Color::from_rgb(0.90, 0.90, 0.90) },
-        _ => if is_dark(theme) { Color::from_rgb(0.16, 0.16, 0.16) } else { Color::WHITE }, // White card in light mode
+        _ => if is_dark(theme) { Color::from_rgb(0.16, 0.16, 0.16) } else { Color::WHITE },
     };
 
     button::Style {

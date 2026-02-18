@@ -101,7 +101,7 @@ impl Default for AppearanceSettings {
         Self {
             theme: ThemeMode::Dark,
             language: Language::English,
-            accent_color: Color::from_rgb(0.0, 0.48, 1.0), // Default Blue
+            accent_color: Color::from_rgb(0.0, 0.48, 1.0),
         }
     }
 }

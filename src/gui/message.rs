@@ -36,7 +36,7 @@ pub enum Message {
     ExportFilteredResults,
     ExportResultsCompleted(Result<(), String>),
 
-    // Appearance
+    
     LanguageChanged(Language),
     ThemeChanged(ThemeMode),
     AccentColorChanged(Color),
