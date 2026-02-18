@@ -28,12 +28,12 @@ impl CollapseFindOBFScanner {
             println!("{} Scanning JAR file: {}", blue_text!("🔎"), jar_path.display());
         }
 
-        let buffer_size = SYSTEM_CONFIG.buffer_size.min(16 * 1024 * 1024); // Increase to 16MB per file
+        let buffer_size = SYSTEM_CONFIG.buffer_size.min(16 * 1024 * 1024);
         let _avg_entry_size = total_files.saturating_sub(1).max(1) * 1024;
-        let optimal_buffer = buffer_size; // Always use buffer_size limit
+        let optimal_buffer = buffer_size;
 
         let mut total_memory_used = 0u64;
-        let max_total_memory = 512 * 1024 * 1024; // Increase to 512MB total memory pool
+        let max_total_memory = 512 * 1024 * 1024;
 
         let pb_template = format!("{} [{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>7}}/{{len:7}} ({{percent}}%) Processing: {{msg}}", green_text!("🔍"));
         let progress_bar = Arc::new(Mutex::new(ProgressBar::new(total_files as u64)));

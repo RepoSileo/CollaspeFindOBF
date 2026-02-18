@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crate::detection::{cache_safe_string, calculate_detection_hash, is_cached_safe_string};
 use crate::errors::ScanError;
-// use crate::filters::URL_REGEX; // Unused
 
 use crate::parser::parse_class_structure;
 use crate::scanner::scan::CollapseFindOBFScanner;
@@ -56,7 +55,6 @@ impl CollapseFindOBFScanner {
 
         let mut findings = Vec::new();
 
-        // Non-standard class file (custom JVM)
         if data.len() >= 2 && data[0] != 0xCA && data[1] != 0xFE {
             return self.handle_non_standard_class(
                 data,
@@ -69,11 +67,8 @@ impl CollapseFindOBFScanner {
 
         let class_details = parse_class_structure(data, original_path_str, self.options.verbose)?;
 
-        // Detect obfuscation only in Obfuscation or All mode
-        // Detect obfuscation
         self.check_name_obfuscation(&class_details, &mut findings);
 
-        // Scan strings for Discord webhooks (always) or obfuscation
         let strings_to_scan = self.prepare_strings_for_scanning(&class_details);
         self.scan_strings_for_webhooks_and_obfuscation(&strings_to_scan, &mut findings);
 
@@ -84,7 +79,6 @@ impl CollapseFindOBFScanner {
         self.create_scan_result(findings, class_details, original_path_str, resource_info)
     }
 
-    /// Проверка имён на обфускацию
     fn check_name_obfuscation(
         &self,
         details: &ClassDetails,
@@ -92,8 +86,6 @@ impl CollapseFindOBFScanner {
     ) {
         let full_name_lower = details.class_name.to_lowercase();
         
-        // "Умный" иммунитет: для известных библиотек пропускаем только проверку имен на случайность,
-        // но оставляем проверку на вредоносные ключевые слова (на случай заражения библиотеки).
         let is_library = full_name_lower.starts_with("net/minecraft") 
             || full_name_lower.starts_with("java/") 
             || full_name_lower.starts_with("javax/")
@@ -123,8 +115,22 @@ impl CollapseFindOBFScanner {
             || full_name_lower.contains("libraries");
 
         if !is_library {
-            // Проверяем каждую часть пути на случайность (только для не-библиотек)
+            const KNOWN_SHORT_PATHS: &[&str] = &[
+                "ru", "su", "ua", "us", "uk", "de", "fr", "cn", "jp", "kr", "br",
+                "es", "it", "pl", "cz", "nl", "se", "no", "fi", "dk", "at",
+                "ch", "be", "pt", "gr", "tr", "in", "au", "nz", "ca", "mx",
+                "ar", "za", "eg", "il", "sg", "hk", "tw", "th", "vn", "id",
+                "ph", "my", "ro", "hu", "bg", "sk", "hr", "si", "lt", "lv",
+                "ee", "by", "kz", "ge", "am", "az", "md", "kg", "tj", "uz",
+                "com", "org", "net", "io", "me", "cc", "co", "eu", "tv", "gg",
+                "dev", "app", "pro", "biz", "edu", "gov", "mil", "int",
+                "api", "lib", "sdk", "gui", "cmd", "cli", "db", "fx", "ui",
+            ];
+
             for part in details.class_name.split('/') {
+                if KNOWN_SHORT_PATHS.iter().any(|&known| known.eq_ignore_ascii_case(part)) {
+                    continue;
+                }
                 if self.is_random_name(part) {
                     findings.push((
                         FindingType::ObfuscationRandomName,
@@ -151,15 +157,12 @@ impl CollapseFindOBFScanner {
                     return;
                 }
 
-                // Проверка на Unicode символы (не ASCII), исключая кириллицу
-                // Кирилица: U+0400..U+04FF
                 let suspicious_count = name.chars()
                     .filter(|&c| !c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
                     .count();
                 
                 let total_chars = name.chars().count();
                 
-                // Порог для Unicode обфускации: должен быть экстремальным (почти 100% мусора)
                 if total_chars > 5 && (suspicious_count > 10 && suspicious_count * 100 / total_chars > 95) {
                     findings.push((
                         FindingType::ObfuscationUnicode,
@@ -171,7 +174,6 @@ impl CollapseFindOBFScanner {
                     ));
                 }
 
-                // Классы и суперклассы проверяем на случайные имена (только если это реально каша)
                 if (context == "Class Name" || context == "Superclass Name") && self.is_random_name(name) {
                     findings.push((
                         FindingType::ObfuscationRandomName,
@@ -186,7 +188,6 @@ impl CollapseFindOBFScanner {
         }
 
         for keyword in crate::detection::SUSSY_KEYWORDS.iter() {
-            // Ищем ключевое слово как отдельную часть пути
             let parts: Vec<&str> = full_name_lower.split('/').collect();
             if parts.iter().any(|&p| p == *keyword) {
                  findings.push((
@@ -198,48 +199,39 @@ impl CollapseFindOBFScanner {
         }
     }
 
-    /// Проверка имени на случайный паттерн
     fn is_random_name(&self, simple_name: &str) -> bool {
         let len = simple_name.len();
         if len == 0 { return false; }
 
-        // Детект длинных повторяющихся символов или малой вариативности (типа |||| или lIlIl)
         if len >= 5 {
             let mut char_counts: HashMap<char, usize> = HashMap::new();
             for c in simple_name.chars() {
                 *char_counts.entry(c).or_insert(0) += 1;
             }
             
-            // Если один символ занимает более 70%
             for (&_c, &count) in char_counts.iter() {
                 if count * 100 / len > 70 {
                     return true;
                 }
             }
 
-            // Малое количество уникальных символов для длинного имени
             if char_counts.len() <= 3 && len >= 10 {
                 return true;
             }
         }
 
-        // Детект имён типа _0, _u, _1
         if simple_name.starts_with('_') && len <= 3 {
             return true;
         }
 
-        // Короткие имена (одна-две буквы) почти всегда результат обфускации в Java классах
-        // Игнорируем чисто числовые имена (анонимные классы типа $1, $2)
         if len <= 2 && simple_name.chars().all(|c| c.is_alphabetic()) {
             return true;
         }
 
-        // Если имя содержит $ и заканчивается на цифры - это сгенерированный класс
         if simple_name.contains('$') {
             return false;
         }
 
-        // Длинные имена
         if len >= 10 {
             let mut uppercase = 0;
             let mut lowercase = 0;
@@ -254,19 +246,16 @@ impl CollapseFindOBFScanner {
                 if "aeiouyAEIOUY".contains(c) { vowels += 1; }
             }
 
-            // Если это длинная каша из букв разного регистра без гласных
             if len >= 12 && (uppercase > 4 && lowercase > 4) && (vowels as f32 / len as f32) < 0.15 {
                 return true;
             }
             
-            // Много цифр
             if len < 20 && digits > len / 2 { return true; }
         }
 
         false
     }
 
-    /// Проверка строк на обфусцированные строки (Discord webhook check removed)
     fn scan_strings_for_webhooks_and_obfuscation(
         &self,
         strings_to_scan: &[&String],
@@ -278,9 +267,6 @@ impl CollapseFindOBFScanner {
                 let mut local = Vec::new();
                 let s_ref: &str = s.as_str();
 
-                // REMOVED: check_discord_webhook
-
-                // Проверка на обфусцированные строки
                 self.check_obfuscated_string(s_ref, &mut local);
 
                 if local.is_empty() {
@@ -296,23 +282,17 @@ impl CollapseFindOBFScanner {
         }
     }
 
-    // fn check_discord_webhook(&self, string: &str, findings: &mut Vec<(FindingType, String)>) { ... } // Removed
-
-    /// Проверка строки на обфускацию (поиск зашифрованных данных)
     fn check_obfuscated_string(&self, string: &str, findings: &mut Vec<(FindingType, String)>) {
         let total_chars = string.chars().count();
-        if total_chars < 40 { // Поднял порог длины, чтобы не ловить сигнатуры/хеши
+        if total_chars < 40 {
             return;
         }
 
-        // Подсчитываем "мусорные" символы
         let junk_count = string.chars().filter(|&c| {
             (c.is_ascii() && c.is_ascii_control() && c != '\n' && c != '\r' && c != '\t') ||
             (!c.is_ascii() && !(c >= '\u{0400}' && c <= '\u{04FF}'))
         }).count();
 
-        // Чтобы считаться зашифрованной строкой, мусора должно быть ОЧЕНЬ много
-        // И абсолютное количество мусора должно быть высоким (>30 символов)
         if junk_count > 30 && (junk_count * 100 / total_chars > 85) {
             findings.push((
                 FindingType::ObfuscationString,
@@ -330,7 +310,6 @@ impl CollapseFindOBFScanner {
                 !s.is_empty() && 
                 len >= 6 && 
                 !is_cached_safe_string(s) &&
-                // Не пропускаем, если строка длинная и без пробелов (может быть Base64)
                 (len < 30 || s.contains(' ') || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='))
             })
             .take(500)
@@ -355,7 +334,6 @@ impl CollapseFindOBFScanner {
             *type_counts.entry(finding_type.clone()).or_insert(0) += 1;
         }
 
-        // Discord Webhook = максимальная опасность
         if *type_counts.get(&FindingType::DiscordWebhook).unwrap_or(&0) > 0 {
             return 10;
         }
