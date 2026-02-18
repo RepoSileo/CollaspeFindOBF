@@ -99,7 +99,7 @@ impl FindingType {
         match self {
             FindingType::DiscordWebhook => 10,
             FindingType::ObfuscationUnicode => 1,
-            FindingType::ObfuscationRandomName => 2,
+            FindingType::ObfuscationRandomName => 4,
             FindingType::ObfuscationString => 1,
         }
     }
