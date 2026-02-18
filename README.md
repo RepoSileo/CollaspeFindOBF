@@ -1,6 +1,6 @@
 # CollapseFindOBF
 Collapse find pls obf this file
-Status build: Not work
+| Status build: Work
 
 ## Installation
 
