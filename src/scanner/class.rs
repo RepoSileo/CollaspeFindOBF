@@ -113,9 +113,49 @@ impl CollapseFindOBFScanner {
             || full_name_lower.starts_with("com/gson")
             || full_name_lower.starts_with("it/unimi/dsi/fastutil")
             || full_name_lower.starts_with("io/jsonwebtoken")
-            || full_name_lower.starts_with("org/yaml/snakeyaml")
+            || full_name_lower.starts_with("org/yaml")
+            || full_name_lower.starts_with("org/joml")
+            || full_name_lower.starts_with("com/viaversion")
+            || full_name_lower.starts_with("net/java")
+            || full_name_lower.starts_with("org/jetbrains")
+            || full_name_lower.starts_with("org/intellij")
+            || full_name_lower.starts_with("org/checkerframework")
+            || full_name_lower.starts_with("org/codehaus")
+            || full_name_lower.starts_with("org/json")
+            || full_name_lower.starts_with("com/fasterxml")
+            || full_name_lower.starts_with("com/typesafe")
+            || full_name_lower.starts_with("com/zaxxer")
+            || full_name_lower.starts_with("org/postgresql")
+            || full_name_lower.starts_with("com/mysql")
+            || full_name_lower.starts_with("org/sqlite")
+            || full_name_lower.starts_with("org/h2")
+            || full_name_lower.starts_with("org/mongodb")
+            || full_name_lower.starts_with("org/springframework")
+            || full_name_lower.starts_with("io/projectreactor")
+            || full_name_lower.starts_with("ch/qos/logback")
+            || full_name_lower.starts_with("org/log4j")
+            || full_name_lower.starts_with("com/lmax/disruptor")
+            || full_name_lower.starts_with("com/comphenix")
+            || full_name_lower.starts_with("org/bukkit")
+            || full_name_lower.starts_with("org/spigotmc")
+            || full_name_lower.starts_with("com/destroystokyo/paper")
+            || full_name_lower.starts_with("org/spongepowered")
+            || full_name_lower.starts_with("org/jline")
+            || full_name_lower.starts_with("net/bytebuddy")
+            || full_name_lower.starts_with("org/objectweb/asm")
+            || full_name_lower.starts_with("org/antlr")
+            || full_name_lower.starts_with("org/mozilla")
+            || full_name_lower.starts_with("org/jsoup")
+            || full_name_lower.starts_with("org/dom4j")
+            || full_name_lower.starts_with("org/xml")
+            || full_name_lower.starts_with("org/relaxng")
+            || full_name_lower.starts_with("org/w3c")
+            || full_name_lower.starts_with("org/xmlpull")
+            || full_name_lower.starts_with("org/tukaani")
             || full_name_lower.contains("mixins")
-            || full_name_lower.contains("libraries");
+            || full_name_lower.contains("libraries")
+            || full_name_lower.contains("mappings")
+            || full_name_lower.contains("remapper");
 
         if !is_library {
             const KNOWN_SHORT_PATHS: &[&str] = &[
@@ -146,22 +186,22 @@ impl CollapseFindOBFScanner {
 
             let mut short_names_count = 0;
             for method in &details.methods {
-                if method.name.len() <= 2 && !method.name.starts_with('<') {
+                if method.name.len() <= 1 && !method.name.starts_with('<') {
                    short_names_count += 1;
                 }
             }
             for field in &details.fields {
-                if field.name.len() <= 2 {
+                if field.name.len() <= 1 {
                     short_names_count += 1;
                 }
             }
 
-            if short_names_count >= 10 {
+            if short_names_count >= 30 {
                 findings.push((
                     FindingType::ObfuscationRandomName,
                     format!("Massive member obfuscation: {} short names", short_names_count),
                 ));
-            } else if short_names_count >= 3 && details.class_name.len() <= 2 {
+            } else if short_names_count >= 10 && details.class_name.len() <= 2 {
                  findings.push((
                     FindingType::ObfuscationRandomName,
                     format!("Class and members use obfuscated naming pattern"),
@@ -191,7 +231,7 @@ impl CollapseFindOBFScanner {
                 
                 let total_chars = name.chars().count();
                 
-                if total_chars > 5 && (suspicious_count > 10 && suspicious_count * 100 / total_chars > 95) {
+                if total_chars > 8 && (suspicious_count > 10 && suspicious_count * 100 / total_chars > 95) {
                     findings.push((
                         FindingType::ObfuscationUnicode,
                         format!(
@@ -202,7 +242,7 @@ impl CollapseFindOBFScanner {
                     ));
                 }
 
-                if (context == "Class Name" || context == "Superclass Name") && self.is_random_name(name) {
+                if (context == "Class Name" || context == "Superclass Name") && total_chars > 2 && self.is_random_name(name) {
                     findings.push((
                         FindingType::ObfuscationRandomName,
                         format!("{} '{}' (fully random name)", context, truncate_string(name, 30)),
@@ -219,7 +259,7 @@ impl CollapseFindOBFScanner {
             let parts: Vec<&str> = full_name_lower.split('/').collect();
             if parts.iter().any(|&p| p == *keyword) {
                  findings.push((
-                    FindingType::ObfuscationString,
+                    FindingType::ObfuscationRandomName,
                     format!("Highly suspicious keyword '{}' found in package path", keyword),
                 ));
                 break;
@@ -231,28 +271,28 @@ impl CollapseFindOBFScanner {
         let len = simple_name.len();
         if len == 0 { return false; }
 
-        if len >= 5 {
+        if len >= 8 {
             let mut char_counts: HashMap<char, usize> = HashMap::new();
             for c in simple_name.chars() {
                 *char_counts.entry(c).or_insert(0) += 1;
             }
             
             for (&_c, &count) in char_counts.iter() {
-                if count * 100 / len > 70 {
+                if count * 100 / len > 75 {
                     return true;
                 }
             }
 
-            if char_counts.len() <= 3 && len >= 10 {
+            if char_counts.len() <= 3 && len >= 12 {
                 return true;
             }
         }
 
-        if simple_name.starts_with('_') && len <= 3 {
+        if simple_name.starts_with('_') && len <= 2 {
             return true;
         }
 
-        if len <= 2 && simple_name.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if len == 1 && simple_name.chars().all(|c| c.is_ascii_alphanumeric()) {
             return true;
         }
 
@@ -260,7 +300,7 @@ impl CollapseFindOBFScanner {
             return false;
         }
 
-        if len >= 10 {
+        if len >= 15 {
             let mut uppercase = 0;
             let mut lowercase = 0;
             let mut digits = 0;
@@ -274,11 +314,11 @@ impl CollapseFindOBFScanner {
                 if "aeiouyAEIOUY".contains(c) { vowels += 1; }
             }
 
-            if len >= 12 && (uppercase > 4 && lowercase > 4) && (vowels as f32 / len as f32) < 0.15 {
+            if len >= 18 && (uppercase > 6 && lowercase > 6) && (vowels as f32 / len as f32) < 0.10 {
                 return true;
             }
             
-            if len < 20 && digits > len / 2 { return true; }
+            if len < 25 && digits > len / 2 + 2 { return true; }
         }
 
         false
